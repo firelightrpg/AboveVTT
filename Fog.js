@@ -2123,8 +2123,83 @@ function is_rgba_fully_transparent(rgba){
 }
 
 /**
+ * Calculates hexagon dimensions for snapping, based on the grid type and pixel size.
+ *
+ * @param {number} gridPixelSize - The base size of the hex grid in pixels.
+ * @param {string} gridType - Either "2" (vertical hex) or "3" (horizontal hex).
+ * @param {number} scaleFactor - The scene scale factor.
+ * @returns {Object} - An object with { hexWidth, hexHeight }.
+ */
+function calculateHexDimensions(gridPixelSize, gridType, scaleFactor) {
+    const hexSize = gridPixelSize * scaleFactor;
+
+    if (gridType == "2") {
+        // Vertical hex grid (staggered rows)
+        const hexWidth = Math.sqrt(3) * hexSize / 2; // Distance across flat sides
+        const hexHeight = hexSize; // Distance from point to point
+        console.log(`Hex Dimensions (Vertical): width=${hexWidth}, height=${hexHeight}`);
+        return { hexWidth, hexHeight };
+    } else if (gridType == "3") {
+        // Horizontal hex grid (staggered columns)
+        const hexWidth = hexSize; // Distance from point to point
+        const hexHeight = Math.sqrt(3) * hexSize / 2; // Distance across flat sides
+        console.log(`Hex Dimensions (Horizontal): width=${hexWidth}, height=${hexHeight}`);
+        return { hexWidth, hexHeight };
+    }
+
+    // Default: Square grid
+    console.log(`Square Grid Dimensions: size=${gridPixelSize}`);
+    return { hexWidth: gridPixelSize, hexHeight: gridPixelSize };
+}
+
+/**
+ * Snaps a point to the nearest hex grid cell.
+ *
+ * @param {number} x - The X-coordinate to snap.
+ * @param {number} y - The Y-coordinate to snap.
+ * @param {string} gridType - Either "2" (vertical hex) or "3" (horizontal hex).
+ * @param {number} gridPixelSize - The size of the grid in pixels.
+ * @param {number} scaleFactor - The scene scale factor.
+ * @returns {Array<number>} - The snapped [X, Y] coordinates.
+ */
+function snapToHexGrid(x, y, gridType, gridPixelSize, scaleFactor) {
+    // Calculate hex dimensions
+    const { hexWidth, hexHeight } = calculateHexDimensions(gridPixelSize, gridType, scaleFactor);
+
+    // Get offsets
+    const offsetX = parseFloat(window.CURRENT_SCENE_DATA.offsetx) || 0;
+    const offsetY = parseFloat(window.CURRENT_SCENE_DATA.offsety) || 0;
+
+    // Adjust for offsets
+    const adjustedX = x - offsetX;
+    const adjustedY = y - offsetY;
+
+    console.log(`Adjusted Coordinates: x=${adjustedX}, y=${adjustedY}`);
+
+    if (gridType == "2") { // Vertical hex grid
+        const q = Math.round(adjustedX / (hexWidth * 0.75)); // Axial column index
+        const r = Math.round((adjustedY - (q % 2) * (hexHeight / 2)) / hexHeight); // Axial row index
+        const snappedX = Math.round(q * (hexWidth * 0.75) + offsetX); // Reapply offset
+        const snappedY = Math.round(r * hexHeight + (q % 2) * (hexHeight / 2) + offsetY); // Reapply offset
+        console.log(`Snapped Coordinates (Vertical): x=${snappedX}, y=${snappedY}`);
+        return [snappedX, snappedY];
+    } else if (gridType == "3") { // Horizontal hex grid
+        const r = Math.round(adjustedY / (hexHeight * 0.75)); // Axial row index
+        const q = Math.round((adjustedX - (r % 2) * (hexWidth / 2)) / hexWidth); // Axial column index
+        const snappedX = Math.round(q * hexWidth + (r % 2) * (hexWidth / 2) + offsetX); // Reapply offset
+        const snappedY = Math.round(r * (hexHeight * 0.75) + offsetY); // Reapply offset
+        console.log(`Snapped Coordinates (Horizontal): x=${snappedX}, y=${snappedY}`);
+        return [snappedX, snappedY];
+    }
+
+    // Default: No snapping
+    console.log(`Default Snapping: x=${x}, y=${y}`);
+    return [Math.round(x), Math.round(y)];
+}
+
+/**
  * Snaps the given coordinates to the nearest grid intersection, based on the current scene data.
- * Supports square, vert or horz hex grids and includes offsets if they are defined.
+ * Supports square, vertical, or horizontal hex grids and includes offsets if they are defined.
  * 
  * @param {number} pointX - The X-coordinate to be snapped.
  * @param {number} pointY - The Y-coordinate to be snapped.
@@ -2134,18 +2209,23 @@ function get_snapped_coordinates(pointX, pointY) {
     console.log(`Before snapping - x: ${pointX}, y: ${pointY}`);
     console.log(`Grid type: ${window.CURRENT_SCENE_DATA.gridType}`);
 
-    const offsetX = parseFloat(window.CURRENT_SCENE_DATA.offsetx) || 0;
-    const offsetY = parseFloat(window.CURRENT_SCENE_DATA.offsety) || 0;
+    const gridType = window.CURRENT_SCENE_DATA.gridType;
+    const gridPixelSize = window.CURRENT_SCENE_DATA.hpps; // Pixel size of grid
+    const scaleFactor = window.CURRENT_SCENE_DATA.scale_factor;
 
-    if (window.CURRENT_SCENE_DATA.gridType === "1") {
+    if (gridType === "1") {
         // Square grid
-        const gridWidth = parseFloat(window.CURRENT_SCENE_DATA.hpps);
+        const gridWidth = parseFloat(gridPixelSize);
         const gridHeight = parseFloat(window.CURRENT_SCENE_DATA.vpps);
+        const offsetX = parseFloat(window.CURRENT_SCENE_DATA.offsetx) || 0;
+        const offsetY = parseFloat(window.CURRENT_SCENE_DATA.offsety) || 0;
+
         pointX = Math.floor(pointX / gridWidth) * gridWidth + offsetX;
         pointY = Math.floor(pointY / gridHeight) * gridHeight + offsetY;
-    } else if (window.CURRENT_SCENE_DATA.gridType === "2" || window.CURRENT_SCENE_DATA.gridType === "3") {
+        console.log(`Snapped Coordinates (Square): x=${pointX}, y=${pointY}`);
+    } else if (gridType === "2" || gridType === "3") {
         // Hex grid (vertical or horizontal)
-        console.log("Hex snapping is not implemented yet.");
+        [pointX, pointY] = snapToHexGrid(pointX, pointY, gridType, gridPixelSize, scaleFactor);
     }
 
     console.log(`After snapping - x: ${pointX}, y: ${pointY}`);
