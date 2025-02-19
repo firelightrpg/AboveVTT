@@ -405,24 +405,48 @@ function character_sheet_changed(changes) {
 
 function send_character_hp(maxhp) {
   const pc = find_pc_by_player_id(find_currently_open_character_sheet(), false); // use `find_currently_open_character_sheet` in case we're not on CharactersPage for some reason
+
+
+  let current, maximum, temp, deathsaves;
+  if(window.CurrentPcHp == undefined)
+    window.CurrentPcHp = {};
   if(maxhp > 0){ //the player just died and we are sending removed node max hp data
-    character_sheet_changed({
-      hitPointInfo: {
-        current: 0,
-        maximum: maxhp,
-        temp: 0
-      },
-      deathSaveInfo: read_death_save_info()
-    });
+    current = 0;
+    maximum = maxhp;
+    temp = 0;
   }
   else{
+    current = read_current_hp();
+    maximum = read_max_hp(window.CurrentPcHp?.hitPointInfo?.maximum);
+    temp = read_temp_hp();  
+  }
+  deathSaves = read_death_save_info();
+  
+
+
+  if(window.CurrentPcHp?.hitPointInfo?.current != current || 
+    window.CurrentPcHp?.hitPointInfo?.maximum != maximum || 
+    window.CurrentPcHp?.hitPointInfo?.temp != temp || 
+    window.CurrentPcHp?.deathSaveInfo?.successCount != deathSaves.successCount || 
+    window.CurrentPcHp?.deathSaveInfo?.failCount != deathSaves.failCount ){
+    window.CurrentPcHp = {
+      hitPointInfo: {
+        current: current,
+        maximum: maximum,
+        temp: temp
+      },
+      deathSaveInfo:{
+        successCount: deathSaves.successCount,
+        failCount: deathSaves.failCount
+      }
+    }
     character_sheet_changed({
       hitPointInfo: {
-        current: read_current_hp(),
-        maximum: read_max_hp(pc?.hitPointInfo?.maximum),
-        temp: read_temp_hp()
+        current: current,
+        maximum: maximum,
+        temp: temp
       },
-      deathSaveInfo: read_death_save_info()
+      deathSaveInfo: deathSaves
     });
   }
 
@@ -2044,7 +2068,7 @@ function observe_character_sheet_changes(documentToObserve) {
               mutationTarget.hasClass("ct-health-summary__deathsaves-mark") ||
               mutationTarget.hasClass("ct-health-manager__input") ||
               mutationTarget.hasClass('ct-status-summary-mobile__deathsaves-mark') ||
-              mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 ||
+              (mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 && mutationTarget.closest('[class*="styles_container"]').find("input[class*='styles_input']").length == 0 && mutationTarget.is('button, span'))||
               mutationTarget.closest('[class*="styles_pane"]')?.find('[class*="styles_healingContainer"]').length
             ) {
               send_character_hp();
@@ -2072,7 +2096,7 @@ function observe_character_sheet_changes(documentToObserve) {
               mutationTarget.hasClass('ct-health-summary__deathsaves') ||
               mutationTarget.hasClass('ct-health-summary__deathsaves-mark') ||
               mutationTarget.hasClass('[class*="styles_mark"]') ||
-              (mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 && mutationTarget.find("input[class*=styles_input]").length == 0) ||
+              (mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 && mutationTarget.closest('[class*="styles_container"]').find("input[class*='styles_input']").length == 0 && mutationTarget.is('button, span')) ||
               mutationTarget.closest('[class*="styles_pane"]')?.find('[class*="styles_healingContainer"]').length
             ) {
               send_character_hp();
@@ -2112,7 +2136,7 @@ function observe_character_sheet_changes(documentToObserve) {
 
               if (mutationParent.parent().hasClass('ct-health-summary__hp-item-content') ||
                 mutationParent.hasClass("ct-health-manager__health-item-value") ||
-                mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 ||
+                (mutationTarget.parents('[class*="styles_hitPointsBox"]').length>0 && mutationTarget.closest('[class*="styles_container"]').find("input[class*='styles_input']").length == 0 && mutationTarget.is('button, span')) ||
                 mutationTarget.closest('[class*="styles_pane"]')?.find('[class*="styles_healingContainer"]').length
               ) {
                 send_character_hp();          
@@ -2127,6 +2151,10 @@ function observe_character_sheet_changes(documentToObserve) {
               ){
                 send_abilities();
               }
+              else  if (mutationTarget.closest('.ct-conditions-summary').length>0) { // conditions update from sidebar
+                const conditionsSet = read_conditions(documentToObserve);
+                character_sheet_changed({conditions: conditionsSet});
+              } 
             if (typeof mutation.target.data === "string") {
               if (mutation.target.data.match(multiDiceRollCommandRegex)?.[0]) {
                 try {
