@@ -187,8 +187,9 @@ function token_context_menu_expanded(tokenIds, e) {
 
 
 				redraw_light_walls();
-				redraw_light();
 				redraw_drawn_light();
+				redraw_light();
+
 
 				sync_drawings();
 				if(window.TOKEN_OBJECTS[`${x1}${y1}${x2}${y2}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','')]  != undefined){
@@ -833,8 +834,8 @@ function token_context_menu_expanded(tokenIds, e) {
 				if(window.all_token_objects[group] == undefined){
 					window.all_token_objects[group] = t;
 				}
-				t.sync = mydebounce(function(e) { // VA IN FUNZIONE SOLO SE IL TOKEN NON ESISTE GIA					
-					window.MB.sendMessage('custom/myVTT/token', t.options);
+				t.sync = mydebounce(function(options) { // VA IN FUNZIONE SOLO SE IL TOKEN NON ESISTE GIA					
+					window.MB.sendMessage('custom/myVTT/token', options);
 				}, 300);
 				t.place_sync_persist();
 				ct_add_token(window.TOKEN_OBJECTS[group], false, clickEvent.shiftKey, clickEvent.ctrlKey)
@@ -2901,7 +2902,12 @@ function build_adjustments_flyout_menu(tokenIds) {
 
 	let tokenSizes = [];
 	tokens.forEach(t => {
-		tokenSizes.push(t.numberOfGridSpacesWide());
+		if(t.isLineAoe()){
+			tokenSizes.push(t.numberOfGridSpacesTall());
+		}
+		else{
+			tokenSizes.push(t.numberOfGridSpacesWide());
+		}
 	});
 
 
@@ -2911,7 +2917,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 	let sizeInputs = build_token_size_input(uniqueSizes, function (newSize) {
 		let tokenMultiplierAdjustment = (!window.CURRENT_SCENE_DATA.scaleAdjustment) ? 1 : (window.CURRENT_SCENE_DATA.scaleAdjustment.x > window.CURRENT_SCENE_DATA.scaleAdjustment.y) ? window.CURRENT_SCENE_DATA.scaleAdjustment.x : window.CURRENT_SCENE_DATA.scaleAdjustment.y;
 			
-		const hpps = Math.round(window.CURRENT_SCENE_DATA.hpps) * tokenMultiplierAdjustment;
+		const hpps = window.CURRENT_SCENE_DATA.hpps * tokenMultiplierAdjustment;
 		if (!isNaN(newSize)) {
 			newSize = hpps * newSize;
 		} else {
