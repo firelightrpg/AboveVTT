@@ -80,6 +80,53 @@ function close_token_context_menu() {
 	$("#tokenOptionsClickCloseDiv").click();
 }
 
+
+function select_tokens_in_aoe(aoeTokens, selectPlayerTokens = true){
+	deselect_all_tokens();
+	let canvas = document.createElement('canvas');
+	let ctx = canvas.getContext('2d', { willReadFrequently: true }); //rare case where we can allow cpu do so all the lifting since it is not rendered
+	let rayCast = document.getElementById("raycastingCanvas");
+
+	canvas.width = rayCast.width;
+	canvas.height = rayCast.height;
+
+
+	ctx.globalCompositeOperation='source-over';
+	aoeTokens.forEach(token => {
+		draw_aoe_to_canvas($(`#tokens .token[data-id='${token.options.id}']`), ctx);
+	});
+
+
+	let promises = [];
+	for (let id in window.TOKEN_OBJECTS) {
+		if((!selectPlayerTokens && window.TOKEN_OBJECTS[id].isPlayer()) || 
+			window.TOKEN_OBJECTS[id].options.combatGroupToken ||
+			window.TOKEN_OBJECTS[id].options.type != undefined || 
+			window.TOKEN_OBJECTS[id].isAoe())
+				continue;
+
+		promises.push(new Promise(function(resolve) {
+			let tokenSelector = "div.token[data-id='" + id + "']";
+
+			//Combining some and filter cut down about 140ms for average sized picture
+			
+			const isInAoe = (is_token_in_aoe_context(id, ctx)); 
+			
+			if (isInAoe && !window.TOKEN_OBJECTS[id].options.hidden && !window.TOKEN_OBJECTS[id].options.locked) {
+				let tokenDiv = $(`#tokens>div[data-id='${id}']`)
+				if(tokenDiv.css("pointer-events")!="none" && tokenDiv.css("display")!="none" && !tokenDiv.hasClass("ui-draggable-disabled")) {
+					window.TOKEN_OBJECTS[id].selected = true;
+				}
+			}		
+			resolve();
+		}));
+	}
+	Promise.all(promises).then(()=>{
+		draw_selected_token_bounding_box();
+	})
+	close_token_context_menu();
+}
+
 /**
  * Opens a sidebar modal with token configuration options
  * @param tokenIds {Array<String>} an array of ids for the tokens being configured
@@ -177,7 +224,9 @@ function token_context_menu_expanded(tokenIds, e) {
 							 y2,
 							 12,
 							 doors[0][8],
-							 doors[0][9]
+							 doors[0][9],
+				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+				 			 (doors[0][11] != undefined ? doors[0][11] : "")
 				];	
 				window.DRAWINGS.push(data);
 				window.wallUndo.push({
@@ -260,7 +309,9 @@ function token_context_menu_expanded(tokenIds, e) {
 							 y2,
 							 12,
 							 doors[0][8],
-							 doors[0][9]
+							 doors[0][9],
+				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+				 			 (doors[0][11] != undefined ? doors[0][11] : "")
 				];	
 				window.DRAWINGS.push(data);
 				window.wallUndo.push({
@@ -303,7 +354,9 @@ function token_context_menu_expanded(tokenIds, e) {
 							 y2,
 							 12,
 							 doors[0][8],
-							 doors[0][9]
+							 doors[0][9],
+				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+				 			 (doors[0][11] != undefined ? doors[0][11] : "")
 				];	
 				window.DRAWINGS.push(data);
 				window.wallUndo.push({
@@ -340,7 +393,9 @@ function token_context_menu_expanded(tokenIds, e) {
 							 y2,
 							 12,
 							 doors[0][8],
-							 !hidden
+							 !hidden,
+				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+				 			 (doors[0][11] != undefined ? doors[0][11] : "")
 				];	
 				window.DRAWINGS.push(data);
 				window.wallUndo.push({
@@ -745,16 +800,25 @@ function token_context_menu_expanded(tokenIds, e) {
 					$(this).parent().trigger(ctrlClick);
 				});
 
-						clickedButton.find('#adv').click(function(e){
+				clickedButton.find('#adv').click(function(e){
 					e.stopPropagation();
 					$(this).parent().trigger(shiftClick);
 				});
 				const reset_init = getCombatTrackersettings().remove_init;
 				tokens.forEach(t =>{
+					if(t.options.combatGroup && Object.values(window.TOKEN_OBJECTS).filter(d=>d.options.combatGroup == t.options.combatGroup).length == 2 && window.TOKEN_OBJECTS[t.options.combatGroup]){
+						window.TOKEN_OBJECTS[t.options.combatGroup].delete()
+					}
+					if(window.all_token_objects[t.options.id] == undefined)
+						window.all_token_objects[t.options.id] = t;
 					t.options.ct_show = undefined;
 					t.options.combatGroup = undefined;
-					if(reset_init == true)
+					window.all_token_objects[t.options.id].options.ct_show = undefined;
+					window.all_token_objects[t.options.id].options.combatGroup = undefined;
+					if(reset_init == true){
 						t.options.init = undefined;
+						window.all_token_objects[t.options.id].options.init = undefined;
+					}
 					ct_remove_token(t, false);
 					t.update_and_sync();
 				});
@@ -764,9 +828,15 @@ function token_context_menu_expanded(tokenIds, e) {
 				const reset_init = getCombatTrackersettings().remove_init;
 
 				tokens.forEach(t => {
+					if(window.all_token_objects[t.options.id] == undefined)
+						window.all_token_objects[t.options.id] = t;
 					t.options.combatGroup = undefined;
-					if(reset_init == true)
+					window.all_token_objects[t.options.id].options.combatGroup = undefined;
+
+					if(reset_init == true){
 						t.options.init = undefined;
+						window.all_token_objects[t.options.id].options.init = undefined;
+					}
 					ct_add_token(t, false, undefined, clickEvent.shiftKey, clickEvent.ctrlKey)
 					t.update_and_sync();
 				});
@@ -786,19 +856,26 @@ function token_context_menu_expanded(tokenIds, e) {
 					e.stopPropagation();
 					$(this).parent().trigger(ctrlClick);
 				});
-						clickedButton.find('#adv').click(function(e){
+				clickedButton.find('#adv').click(function(e){
 					e.stopPropagation();
 					$(this).parent().trigger(shiftClick);
 				});
 				const reset_init = getCombatTrackersettings().remove_init;
 				tokens.forEach(t =>{
-					if(t.options.combatGroup && window.TOKEN_OBJECTS[t.options.combatGroup]){
+					if(t.options.combatGroup != undefined && Object.values(window.TOKEN_OBJECTS)?.filter(d=>d.options.combatGroup == t.options.combatGroup)?.length == 2 && window.TOKEN_OBJECTS[t.options.combatGroup]){
 						window.TOKEN_OBJECTS[t.options.combatGroup].delete()
 					}
-					if(reset_init == true)
+					if(window.all_token_objects[t.options.id] == undefined)
+						window.all_token_objects[t.options.id] = t;
+					if(reset_init == true){
 						t.options.init = undefined;
+						window.all_token_objects[t.options.id].options.init = undefined;
+					}
 					t.options.combatGroup = undefined;
 					t.options.ct_show = undefined;
+					
+					window.all_token_objects[t.options.id].options.combatGroup = undefined;
+					window.all_token_objects[t.options.id].options.ct_show = undefined;
 					ct_remove_token(t, false);
 					t.update_and_sync();
 				});
@@ -809,25 +886,39 @@ function token_context_menu_expanded(tokenIds, e) {
 				combatButton.html(removeButtonInternals);
 				let group = uuid();
 				let allHidden = true;
+				let allVisibleNames = true
 				const reset_init = getCombatTrackersettings().remove_init;
+	
+
 				tokens.forEach(t => {
-					if(t.options.combatGroup && window.TOKEN_OBJECTS[t.options.combatGroup]){
+					ct_remove_token(t, false);
+					if(t.options.combatGroup != undefined && Object.values(window.TOKEN_OBJECTS)?.filter(d=>d.options.combatGroup == t.options.combatGroup)?.length == 2 && window.TOKEN_OBJECTS[t.options.combatGroup]){
 						window.TOKEN_OBJECTS[t.options.combatGroup].delete()
 					}
 					if(t.options.hidden !== true){
 						allHidden = false
 					}
-					if(reset_init == true)
+					if(!t.isPlayer() && t.options.revealname == false){
+						allVisibleNames = false;
+					}
+					if(window.all_token_objects[t.options.id] == undefined)
+						window.all_token_objects[t.options.id] = t;
+					if(reset_init == true){
 						t.options.init = undefined;
+						window.all_token_objects[t.options.id].options.init = undefined;
+					}
 					t.options.combatGroup = group;
+					window.all_token_objects[t.options.id].options.combatGroup = group;
+
 					ct_add_token(t, false, undefined, clickEvent.shiftKey,  clickEvent.ctrlKey);
 					t.update_and_sync();
-				});		
+				});	
 				let t = new Token({
 					...tokens[0].options,
 					id: group,
 					combatGroupToken: group,
 					ct_show: !allHidden,
+					revealname: allVisibleNames,
 					name: `${tokens[0].options.name} Group`
 				});
 				window.TOKEN_OBJECTS[group] = t;
@@ -849,6 +940,24 @@ function token_context_menu_expanded(tokenIds, e) {
 			groupCombatButton.append(roll_adv.clone(true,true), roll_disadv.clone(true,true));
 			body.append(groupCombatButton);
 		}
+	}
+	else if(allTokensAreAoe){
+
+		let selectInAoeButton = $(`<button class="aoe-select-tokens material-icons">Select Tokens in Aoe</button>`)
+		selectInAoeButton.off().on("click", function(clickEvent){
+			select_tokens_in_aoe(tokens)
+		});
+
+		body.append(selectInAoeButton);
+
+		let selectMosnterInAoeButton = $(`<button class="aoe-select-tokens material-icons">Aoe select non-players</button>`)
+		selectMosnterInAoeButton.off().on("click", function(clickEvent){
+			select_tokens_in_aoe(tokens, false)
+		});
+
+		body.append(selectMosnterInAoeButton);
+
+		
 	}
 	if(window.DM){
 		let hideText = tokenIds.length > 1 ? "Hide Tokens" : "Hide Token"
@@ -2070,28 +2179,32 @@ function create_aura_presets_edit(){
 	if (window.CURRENT_SCENE_DATA.upsq !== undefined && window.CURRENT_SCENE_DATA.upsq.length > 0) {
 		upsq = window.CURRENT_SCENE_DATA.upsq;
 	}
-	let aura_presets = $('<div id="aura_presets_properties"/>');
+	let aura_presets = $('<table id="aura_presets_properties"/>');
 	dialog.append(aura_presets);
 
 	let titleRow = $(`
-		<div class='aura_preset_title_row'>
-				<div>
-					<h3 style="margin-bottom:0px;">Name</h3>
-				</div>
-				<div>
-					<h3 style="margin-bottom:0px;">Inner Aura</h3>			
-				</div>
-				<div>
-					<h3 style="margin-bottom:0px;">Outer Aura</h3>	
-				</div>
-			</div>
+		<tr class='aura_preset_title_row'>
+				<th>
+					Name
+				</th>
+				<th>
+					Inner Aura	
+				</th>
+				<th>
+					Outer Aura	
+				</th>
+				<th>
+				</th>
+			</tr>
 			`)
 	aura_presets.append(titleRow);
 	for(let i in window.AURA_PRESETS){
 		let row = $(`
-			<div class='aura_preset_row' data-index='${i}'>
-				<input class='aura_preset_title' value='${window.AURA_PRESETS[i].name}'></input>
-				<div class="menu-inner-aura">
+			<tr class='aura_preset_row' data-index='${i}'>
+				<td>
+					<input class='aura_preset_title' value='${window.AURA_PRESETS[i].name}'></input>
+				</td>
+				<td class="menu-inner-aura">
 					<div class="token-image-modal-footer-select-wrapper" style="padding-left: 2px">
 						<div class="token-image-modal-footer-title">Radius (${upsq})</div>
 						<input class="aura-radius" name="aura1" type="text" value="${(window.AURA_PRESETS[i].aura1?.feet) ? window.AURA_PRESETS[i].aura1.feet : ``}" style="width: 3rem" />
@@ -2100,8 +2213,8 @@ function create_aura_presets_edit(){
 						<div class="token-image-modal-footer-title">Color</div>
 						<input class="spectrum" name="aura1Color" value="${(window.AURA_PRESETS[i].aura1?.color) ? window.AURA_PRESETS[i].aura1.color : `rgba(0, 0, 0, 0)`}" >
 					</div>
-				</div>
-				<div class="menu-outer-aura">
+				</td>
+				<td class="menu-outer-aura">
 					<div class="token-image-modal-footer-select-wrapper" style="padding-left: 2px">
 						<div class="token-image-modal-footer-title">Radius (${upsq})</div>
 						<input class="aura-radius" name="aura2" type="text" value="${(window.AURA_PRESETS[i].aura2?.feet) ? window.AURA_PRESETS[i].aura2.feet : ``}" style="width: 3rem" />
@@ -2110,10 +2223,10 @@ function create_aura_presets_edit(){
 						<div class="token-image-modal-footer-title">Color</div>
 						<input class="spectrum" name="aura2Color" value="${(window.AURA_PRESETS[i].aura2?.color) ? window.AURA_PRESETS[i].aura2.color : `rgba(0, 0, 0, 0)`}" >
 					</div>
-				</div>
-				<div class='removePreset'><svg class="" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(-45 50 50)"><rect></rect></g><g transform="rotate(45 50 50)"><rect></rect></g></svg></div>
+				</td>
+				<td><div class='removePreset'><svg class="" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(-45 50 50)"><rect></rect></g><g transform="rotate(45 50 50)"><rect></rect></g></svg></div></td>
 
-			</div>
+			</tr>
 		`)
 		row.find('input.aura_preset_title').off('change.name').on('change.name', function(){
 			window.AURA_PRESETS[i].name = $(this).val().replaceAll(/['"<>]/g, '');
@@ -2182,31 +2295,35 @@ function create_light_presets_edit(){
 	if (window.CURRENT_SCENE_DATA.upsq !== undefined && window.CURRENT_SCENE_DATA.upsq.length > 0) {
 		upsq = window.CURRENT_SCENE_DATA.upsq;
 	}
-	let light_presets = $('<div id="light_presets_properties"/>');
+	let light_presets = $('<table id="light_presets_properties"/>');
 	dialog.append(light_presets);
 
 	let titleRow = $(`
-		<div class='light_preset_title_row'>
-				<div>
-					<h3 style="margin-bottom:0px;">Name</h3>
-				</div>
-				<div>
-					<h3 style="margin-bottom:0px;">Darkvision</h3>			
-				</div>
-				<div>
-					<h3 style="margin-bottom:0px;">Inner Light</h3>			
-				</div>
-				<div>
-					<h3 style="margin-bottom:0px;">Outer Light</h3>	
-				</div>
-			</div>
+		<tr class='light_preset_title_row'>
+				<th>
+					Name
+				</th>
+				<th>
+					Darkvision		
+				</th>
+				<th>
+					Inner Light			
+				</th>
+				<th>
+					Outer Light
+				</th>
+				<th>
+				</th>
+			</tr>
 			`)
 	light_presets.append(titleRow);
 	for(let i in window.LIGHT_PRESETS){
 		let row = $(`
-			<div class='light_preset_row' data-index='${i}'>
-				<input class='light_preset_title' value='${window.LIGHT_PRESETS[i].name}'></input>
-				<div class="menu-vision-aura">
+			<tr class='light_preset_row' data-index='${i}'>
+				<td>
+					<input class='light_preset_title' value='${window.LIGHT_PRESETS[i].name}'></input>
+				</td>
+				<td class="menu-vision-aura">
 					<div class="token-image-modal-footer-select-wrapper" style="padding-left: 2px">
 						<div class="token-image-modal-footer-title">Radius (${upsq})</div>
 						<input class="vision-radius" name="vision" type="text" value="${(window.LIGHT_PRESETS[i].vision?.feet) ? window.LIGHT_PRESETS[i].vision.feet : ``}" style="width: 3rem" />
@@ -2215,8 +2332,8 @@ function create_light_presets_edit(){
 						<div class="token-image-modal-footer-title">Color</div>
 						<input class="spectrum" name="visionColor" value="${(window.LIGHT_PRESETS[i].vision?.color) ? window.LIGHT_PRESETS[i].vision.color : `rgba(0, 0, 0, 0)`}" >
 					</div>
-				</div>
-				<div class="menu-inner-aura">
+				</td>
+				<td class="menu-inner-aura">
 					<div class="token-image-modal-footer-select-wrapper" style="padding-left: 2px">
 						<div class="token-image-modal-footer-title">Radius (${upsq})</div>
 						<input class="light-radius" name="light1" type="text" value="${(window.LIGHT_PRESETS[i].light1?.feet) ? window.LIGHT_PRESETS[i].light1.feet : ``}" style="width: 3rem" />
@@ -2225,8 +2342,8 @@ function create_light_presets_edit(){
 						<div class="token-image-modal-footer-title">Color</div>
 						<input class="spectrum" name="light1Color" value="${(window.LIGHT_PRESETS[i].light1?.color) ? window.LIGHT_PRESETS[i].light1.color : `rgba(0, 0, 0, 0)`}" >
 					</div>
-				</div>
-				<div class="menu-outer-aura">
+				</td>
+				<td class="menu-outer-aura">
 					<div class="token-image-modal-footer-select-wrapper" style="padding-left: 2px">
 						<div class="token-image-modal-footer-title">Radius (${upsq})</div>
 						<input class="light-radius" name="light2" type="text" value="${(window.LIGHT_PRESETS[i].light2?.feet) ? window.LIGHT_PRESETS[i].light2.feet : ``}" style="width: 3rem" />
@@ -2235,10 +2352,10 @@ function create_light_presets_edit(){
 						<div class="token-image-modal-footer-title">Color</div>
 						<input class="spectrum" name="light2Color" value="${(window.LIGHT_PRESETS[i].light2?.color) ? window.LIGHT_PRESETS[i].light2.color : `rgba(0, 0, 0, 0)`}" >
 					</div>
-				</div>
-				<div class='removePreset'><svg class="" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(-45 50 50)"><rect></rect></g><g transform="rotate(45 50 50)"><rect></rect></g></svg></div>
+				</td>
+				<td><div class='removePreset'><svg class="" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(-45 50 50)"><rect></rect></g><g transform="rotate(45 50 50)"><rect></rect></g></svg></div></td>
 
-			</div>
+			</tr>
 		`)
 		row.find('input.light_preset_title').off('change.name').on('change.name', function(){
 			window.LIGHT_PRESETS[i].name = $(this).val().replaceAll(/['"<>]/g, '');
@@ -2601,12 +2718,12 @@ function build_notes_flyout_menu(tokenIds, flyout) {
 		let has_note=id in window.JOURNAL.notes;
 		if(has_note){
 			let viewNoteButton = $(`<button class="icon-view-note material-icons">View Note</button>`)		
-			let noteLinkButton = $(`<button class="icon-view-note material-icons">Copy Note Link</button>`)		
-			
+			let noteLinkButton = $(`<button class="icon-view-note material-icons">Copy Tooltip Link</button>`)		
+			let noteEmbedLinkButton = $(`<button class="icon-view-note material-icons">Copy Embed Tags</button>`)		
 			let deleteNoteButton = $(`<button class="icon-note-delete material-icons">Delete Note</button>`)
 			
 			editNoteButton = $(`<button class="icon-note material-icons">Edit Note</button>`)
-			body.append(viewNoteButton, noteLinkButton, editNoteButton, deleteNoteButton);	
+			body.append(viewNoteButton, noteLinkButton, noteEmbedLinkButton, editNoteButton, deleteNoteButton);	
 			viewNoteButton.off().on("click", function(){
 				window.JOURNAL.display_note(id);
 				$('#tokenOptionsClickCloseDiv').click();
@@ -2615,6 +2732,11 @@ function build_notes_flyout_menu(tokenIds, flyout) {
 				let copyLink = `[note]${id};${window.JOURNAL.notes[id].title}[/note]`
 		        navigator.clipboard.writeText(copyLink);
 			});
+			noteEmbedLinkButton.off().on("click", function(){
+				let copyLink = `[note embed]${id};${window.JOURNAL.notes[id].title}[/note]`
+		        navigator.clipboard.writeText(copyLink);
+			});
+
 			deleteNoteButton.off().on("click", function(){
 				if(id in window.JOURNAL.notes){
 					delete window.JOURNAL.notes[id];
@@ -2914,7 +3036,9 @@ function build_adjustments_flyout_menu(tokenIds) {
 	let uniqueSizes = [...new Set(tokenSizes)];
 
 	console.log("uniqueSizes", uniqueSizes);
-	let sizeInputs = build_token_size_input(uniqueSizes, function (newSize) {
+	let lineaoe = tokens.length == 1 && tokens[0].isLineAoe();
+	let linewidthsize = tokens[0].numberOfGridSpacesWide();
+	let sizeInputs = build_token_size_input(uniqueSizes, function (newSize, linewidth=false) {
 		let tokenMultiplierAdjustment = (!window.CURRENT_SCENE_DATA.scaleAdjustment) ? 1 : (window.CURRENT_SCENE_DATA.scaleAdjustment.x > window.CURRENT_SCENE_DATA.scaleAdjustment.y) ? window.CURRENT_SCENE_DATA.scaleAdjustment.x : window.CURRENT_SCENE_DATA.scaleAdjustment.y;
 			
 		const hpps = window.CURRENT_SCENE_DATA.hpps * tokenMultiplierAdjustment;
@@ -2929,10 +3053,10 @@ function build_adjustments_flyout_menu(tokenIds) {
 			if(token.options.size < newSize) {
 				token.imageSize(1);
 			}
-			token.size(newSize);	
+			token.size(newSize, linewidth);
 			clampTokenImageSize(token.options.imageSize, token.options.size);
 		});
-	}, allTokensAreAoe); // if we're only dealing with aoe, don't bother displaying the select list. Just show the size input
+	}, allTokensAreAoe, lineaoe, linewidthsize); // if we're only dealing with aoe, don't bother displaying the select list. Just show the size input
 	body.append(sizeInputs);
 	if (allTokensAreAoe) {
 		sizeInputs.find("select").closest(".token-image-modal-footer-select-wrapper").hide(); // if we're only dealing with aoe, don't bother displaying the select list. Just show the size input
@@ -3120,7 +3244,7 @@ function build_age_inputs(tokenAges, tokenMaxAges, ageChangeHandler, maxAgeChang
 	let tokenMaxAgeInput = output.find("select");
 	let customAgeInput = output.find("input");
 
-	tokenMaxAgeInput.change(function(event) {
+	tokenMaxAgeInput.off('change focusout').on('change focusout', function(event) {
 		let val = event.target.value == 'false' ? false : event.target.value;
 		let customInputWrapper = $(event.target).parent().next();
 		if (val === "custom") {
@@ -3446,7 +3570,7 @@ function build_options_flyout_menu(tokenIds) {
  * @param forceCustom {boolean} whether or not to force the current setting to be custom even if the size is a standard size... We do this for aoe
  * @returns {*|jQuery|HTMLElement} the jQuery object containing all the input elements
  */
-function build_token_size_input(tokenSizes, changeHandler, forceCustom = false) {
+function build_token_size_input(tokenSizes, changeHandler, forceCustom = false, lineaoe=false, linewidthsize=1) {
 	let numGridSquares = undefined;
 	// get the first value if there's only 1 value
 	if (tokenSizes.length === 1) {
@@ -3472,6 +3596,7 @@ function build_token_size_input(tokenSizes, changeHandler, forceCustom = false) 
 
 	let customStyle = isSizeCustom ? "display:flex;" : "display:none;"
 	const size = (numGridSquares > 0) ? (numGridSquares * window.CURRENT_SCENE_DATA.fpsq) : 1;
+	const lineSize = linewidthsize * window.CURRENT_SCENE_DATA.fpsq;
 	let output = $(`
  		<div class="token-image-modal-footer-select-wrapper">
  			<div class="token-image-modal-footer-title">Token Size</div>
@@ -3490,12 +3615,20 @@ function build_token_size_input(tokenSizes, changeHandler, forceCustom = false) 
  			<input type="number" min="${window.CURRENT_SCENE_DATA.fpsq / 2}" step="${window.CURRENT_SCENE_DATA.fpsq /2}"
 			 name="data-token-size-custom" value=${size} style="width: 3rem;">
  		</div>
+ 		${lineaoe == true ? `
+		 		<div class="token-image-modal-footer-select-wrapper" style="${customStyle}">
+		 			<div class="token-image-modal-footer-title">Custom line width in ${upsq}</div>
+		 			<input type="number" min="${window.CURRENT_SCENE_DATA.fpsq / 2}" step="${window.CURRENT_SCENE_DATA.fpsq /2}"
+					 name="data-token-line-width-custom" value=${lineSize} style="width: 3rem;">
+		 		</div>
+
+ 		`: ``}
  	`);
 
 	let tokenSizeInput = output.find("select");
-	let customSizeInput = output.find("input");
+	let customSizeInput = output.find("input[name='data-token-size-custom']");
 
-	tokenSizeInput.change(function(event) {
+	tokenSizeInput.off('change focusout').on('change focusout', function(event) {
 		let customInputWrapper = $(event.target).parent().next();
 		console.log("tokenSizeInput changed");
 		if ($(event.target).val() === "custom") {
@@ -3507,7 +3640,7 @@ function build_token_size_input(tokenSizes, changeHandler, forceCustom = false) 
 		}
 	});
 
-	customSizeInput.change(function(event) {
+	customSizeInput.off('change focusout').on('change focusout', function(event) {
 		console.log("customSizeInput changed");
 		// convert custom footage into squares
 		let newValue = 
@@ -3521,6 +3654,24 @@ function build_token_size_input(tokenSizes, changeHandler, forceCustom = false) 
 			changeHandler(newValue);
 		}
 	});
+
+	if(lineaoe == true){
+		let customLineWidthInput = output.find("input[name='data-token-line-width-custom']");
+		customLineWidthInput.change(function(event) {
+		console.log("customSizeInput changed");
+		// convert custom footage into squares
+		let newValue = 
+			parseFloat($(event.target).val() / window.CURRENT_SCENE_DATA.fpsq);
+		// tiny is the smallest you can go with a custom size
+		if (newValue < 0.5){
+			 newValue = 0.5
+			$(event.target).val(window.CURRENT_SCENE_DATA.fpsq / 2)
+		}
+		if (!isNaN(newValue)) {
+			changeHandler(newValue, lineaoe);
+		}
+	});
+	}
 
 	return output;
 }
@@ -3784,6 +3935,44 @@ function open_quick_roll_menu(e){
 		qrm_update_popout();
 	});
 
+	let qrm_sendToGamelog = $("<button id='qrm-block-send-to-game-log'><span class='material-symbols-outlined'>login</span></button>");
+	qrm_sendToGamelog.click(function() {
+		let results = $("#quick_roll_area").clone();
+		results.find('#roll_bonus, .roll_mods_group, td>td:nth-of-type(2), td>td:nth-of-type(3)').remove();
+		results.find('input').replaceWith(function(){
+			return $(`<span>${$(this).val()}</span>`)
+		})
+		results.find('img').attr('width', '30').attr('height', '30');
+		results.find('tr').css({
+			'max-height': '30px',
+			'height': '30px'
+		})
+		results.find('tr>td:first-of-type').css({
+			'width': '30px',
+			'height': '30px'
+		})
+		results.find('tr>td:nth-of-type(even)').css({
+			'height': '15px',
+			'font-size': '12px'
+		})
+		results.css({'width':'100%'});
+		results.find('tr td span').each(function(){
+			if($(this).text().match(/fail/gi)){
+				$(this).toggleClass('save-fail', true)
+			}
+			else{
+				$(this).toggleClass('save-success', true)
+			}
+		})
+		results.attr('id','qrm-gamelog');
+		let msgdata = {
+			player: window.PLAYER_NAME,
+			img: window.PLAYER_IMG,
+			text: results[0].outerHTML,
+		};
+		window.MB.inject_chat(msgdata);
+	});
+
 	//Update HP buttons	
 	let qrm_hp_adjustment_wrapper=$('<div id="qrm_adjustment_wrapper" class="adjustments_wrapper"></div>');
 
@@ -3873,10 +4062,19 @@ function open_quick_roll_menu(e){
 	});
 
 	let qrm_footer = $("<div id='quick_roll_footer' class='footer-input-wrapper tfoot'/>");
-	qrm_footer.css('bottom', '0');
-	qrm_footer.css('position','sticky');
-	qrm_footer.css('background', "#f9f9f9");
-	qrm_footer.css('height', 'fit-content');
+	qrm_footer.css({
+		'bottom': '0',
+		'position':'sticky',
+		'background': "#f9f9f9",
+		'height': 'fit-content',
+	    'display': 'flex',
+	    'flex-direction': 'row',
+	    'flex-wrap': 'wrap',
+	    'justify-content': 'flex-start',
+	    'align-items': 'center',
+	    'row-gap': '5px',
+	});
+
 	
 	qrm_footer.append(damage_input)
 	qrm_footer.append(half_damage_input)
@@ -3889,6 +4087,7 @@ function open_quick_roll_menu(e){
 	qrm_footer.append(apply_adjustments)
 	//qrm_footer.append(heal_hp);
 	//qrm_footer.append(damage_hp);
+	qrm_footer.append(qrm_sendToGamelog);
 	qrm_footer.append(qrm_clear);
 	//damage_hp.hide()
 	//heal_hp.hide()

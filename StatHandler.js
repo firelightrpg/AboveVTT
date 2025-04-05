@@ -43,10 +43,16 @@ class StatHandler {
 			let statArray = [];
 			let promises = [];
 			for(let i in window.all_token_objects){
-				if(i == tokenId)
+				if(i == tokenId )
 					continue;
+
 				if(window.all_token_objects[i].options.combatGroup == tokenId){
-					if(window.all_token_objects[i].options.monster =='open5e'){
+					if(window.all_token_objects[i].isPlayer()){
+						const pc = find_pc_by_player_id(i);
+						modArray.push(pc.initiativeBonus);
+						statArray.push(pc.abilities[1].score);
+					}
+					else if(window.all_token_objects[i].options.monster =='open5e'){
 						promises.push(new Promise((resolve, reject) => {
 							this.getStat(window.all_token_objects[i].options.monster, function(data) {
 								modArray.push(Math.floor((data.stats[1].value - 10) / 2.0));
@@ -60,11 +66,11 @@ class StatHandler {
 						modArray.push(modifier);
 						statArray.push((window.all_token_objects[i]?.options?.customInit != undefined || (window.all_token_objects[i]?.options?.customStat != undefined && window.all_token_objects[i]?.options?.customStat[1]?.mod != undefined)) ? ((modifier*2)+10) : 0);
 					}
-					else {
+					else if(window.all_token_objects[i].options.monster != undefined){
 						promises.push(new Promise((resolve, reject) => {
 							this.getStat(window.all_token_objects[i].options.monster, function(stat) {
-								if(stat.data.initiativeMod != undefined){
-									modArray.push(stat.data.initiativeMod.replace('+', ''));
+								if(stat.data.initiativeBonus != null){
+									modArray.push(stat.data.initiativeBonus);
 								}
 								else{
 									modArray.push(Math.floor((stat.data.stats[1].value - 10) / 2.0));
@@ -74,6 +80,10 @@ class StatHandler {
 								resolve();
 							}, window.all_token_objects[i].options.itemId);
 						}));
+					}
+					else{
+						modArray.push(0);
+						statArray.push(10);
 					}
 				}
 			}
@@ -129,8 +139,8 @@ class StatHandler {
 		else{
 			this.getStat(monsterid, function(stat) {
 				let modifier;
-				if(stat.data.initiativeMod != undefined){
-					modifier = stat.data.initiativeMod.replace('+', '');
+				if(stat.data.initiativeBonus != null){
+					modifier = stat.data.initiativeBonus;
 				}
 				else{
 					modifier = Math.floor((stat.data.stats[1].value - 10) / 2.0);

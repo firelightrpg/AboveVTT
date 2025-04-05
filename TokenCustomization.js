@@ -172,41 +172,62 @@ class TokenCustomization {
     }
 
     setTokenOption(key, value) {
+        let currSrc = $('.sidebar-panel-body .example-token.selected .div-token-image')?.attr('src')
+        let target = this.tokenOptions;
+        if(currSrc != undefined){
+            if(this.tokenOptions.alternativeImagesCustomizations == undefined)
+                this.tokenOptions.alternativeImagesCustomizations = {};
+            if(this.tokenOptions.alternativeImagesCustomizations[currSrc] == undefined)
+                this.tokenOptions.alternativeImagesCustomizations[currSrc] ={};
+            target = this.tokenOptions.alternativeImagesCustomizations[currSrc]
+        }
+
         console.debug("setTokenOption", key, value);
         if (value === undefined) {
-            delete this.tokenOptions[key];
+            delete target[key];
         } else if (key === "name") { // we want to special case "name" because we want to guarantee that it's a string
             if (typeof value === "string") {
-                this.tokenOptions[key] = value;
+                target[key] = value;
             } else {
-                this.tokenOptions[key] = `${value}`;
+                target[key] = `${value}`;
             }
         } else if (value === true || value === "true") {
-            this.tokenOptions[key] = true;
+            target[key] = true;
         } else if (value === false || value === "false") {
-            this.tokenOptions[key] = false;
+            target[key] = false;
         } else if (!isNaN(parseFloat(value)) && typeof value === "string") {
             if(key.includes(".")){
                 const keys = key.split('.');
                 if(keys.length == 2){
-                    if(this.tokenOptions[keys[0]] == undefined)
-                        this.tokenOptions[keys[0]] = {};
+                    if(target[keys[0]] == undefined)
+                        target[keys[0]] = {};
                     if (value.includes(".")) {
-                        this.tokenOptions[keys[0]][keys[1]] = parseFloat(value);
+                        target[keys[0]][keys[1]] = parseFloat(value);
                     } else {
-                        this.tokenOptions[keys[0]][keys[1]] = parseInt(value);
+                        target[keys[0]][keys[1]] = parseInt(value);
                     } 
                 }
             }
             else{
                 if (value.includes(".")) {
-                    this.tokenOptions[key] = parseFloat(value);
+                    target[key] = parseFloat(value);
                 } else {
-                    this.tokenOptions[key] = parseInt(value);
+                    target[key] = parseInt(value);
                 }
             }
         } else {
-            this.tokenOptions[key] = value;
+            if(key.includes(".")){
+                const keys = key.split('.');
+                if(keys.length == 2){
+                    if(target[keys[0]] == undefined)
+                        target[keys[0]] = {};
+                    target[keys[0]][keys[1]] = value;
+                }
+            }
+            else{
+                target[key] = value;
+            }
+            
         }
     }
 
@@ -231,16 +252,21 @@ class TokenCustomization {
         }
         let index = this.tokenOptions.alternativeImages.findIndex(i => i === imageUrl);
         if (typeof index === "number" && index >= 0) {
+            if(this.tokenOptions.alternativeImagesCustomizations != undefined)
+                delete this.tokenOptions.alternativeImagesCustomizations[this.tokenOptions.alternativeImages[index]];
             this.tokenOptions.alternativeImages.splice(index, 1);
         }
         const parsed = await parse_img(imageUrl);
         let parsedIndex = this.tokenOptions.alternativeImages.findIndex(i => parse_img(i) === parsed);
         if (typeof parsedIndex === "number" && parsedIndex >= 0) {
+            if(this.tokenOptions.alternativeImagesCustomizations != undefined)
+                delete this.tokenOptions.alternativeImagesCustomizations[this.tokenOptions.alternativeImages[parsedIndex]];
             this.tokenOptions.alternativeImages.splice(parsedIndex, 1);
         }
     }
     removeAllAlternativeImages() {
         this.tokenOptions.alternativeImages = [];
+        this.tokenOptions.alternativeImagesCustomizations = {};
     }
     randomImage() {
         if (this.tokenOptions.alternativeImages && this.tokenOptions.alternativeImages.length > 0) {
@@ -708,6 +734,8 @@ function persist_token_customization(customization, callback) {
             callback(false, "Invalid Customization");
             return;
         }
+
+
         customization.tokenOptions = Object.fromEntries(Object.entries(customization.tokenOptions).filter(([key, value]) => value != 'undefined'))
         let existingIndex = window.TOKEN_CUSTOMIZATIONS.findIndex(c => c.tokenType === customization.tokenType && c.id === customization.id);
         if (existingIndex >= 0) {
@@ -732,6 +760,8 @@ function persist_token_customization(customization, callback) {
                 }
             }
         }
+        
+       
 
         // TODO: call the API with a single object instead of persisting everything
         persist_all_token_customizations(window.TOKEN_CUSTOMIZATIONS, callback);
@@ -879,7 +909,7 @@ function rebuild_ddb_npcs(redrawList = false) {
     // then copy the output and paste it into the JSON.parse here. Everything else is taken care of
 
     //"1121697-hadozee" is removed due to ddb removing the images.
-    const playableRaceIds = JSON.parse('["1751436-dwarf","1751437-elf","1751440-halfling","1751441-human","1751434-aasimar","1751435-dragonborn","1751438-gnome","1751439-goliath","1751442-orc","1751443-tiefling","1026377-aarakocra","1026378-aasimar","1026379-air-genasi","1026380-bugbear","1026381-centaur","1026382-changeling","1026383-deep-gnome","1026384-duergar","1026385-earth-genasi","1026386-eladrin","814913-fairy","1026387-firbolg","1026388-fire-genasi","1026389-githyanki","1026390-githzerai","1026391-goblin","1026392-goliath","814914-harengon","1026393-hobgoblin","1026394-kenku","1026395-kobold","1026396-lizardfolk","1026397-minotaur","1026398-orc","1026399-satyr","1026400-sea-elf","1026401-shadar-kai","1026402-shifter","1026403-tabaxi","1026404-tortle","1026405-triton","1026406-water-genasi","1026407-yuan-ti","1214237-kender","1121694-astral-elf","1121695-autognome","1121696-giff","1121698-plasmoid","1121699-thri-kreen","883673-owlin","706719-lineages","410992-leonin","410993-satyr","260666-changeling","260720-kalashtar","260758-shifter","260828-warforged","169862-verdan","67624-centaur","67607-loxodon","67599-minotaur","67585-simic-hybrid","67582-vedalken","40-feral-tiefling","41-tortle","229754-locathah","302384-grung","25294-gith","24-aasimar","32-bugbear","25-firbolg","33-goblin","34-hobgoblin","28-kenku","516426-kobold","29-lizardfolk","516433-orc","30-tabaxi","31-triton","37-yuan-ti-pureblood","4-aarakocra","23-genasi","22-goliath","16-dragonborn","13-dwarf","3-elf","18-gnome","20-half-elf","14-halfling","2-half-orc","1-human","7-tiefling","1726258-bearfolk","1726259-darakhul","1726260-erina","1726261-quickstep","1726262-ratatosk","1726263-ravenfolk","1726264-satarre","1726265-shade","1726266-shadow-goblin","1726267-umbral-human","1699132-the-disembodied","1699133-wechselkind","1592465-cervan","1592466-corvum","1592467-gallus","1592468-hedge","1592469-jerbeen","1592470-luma","1592471-mapach","1592472-raptor","1592473-strig","1592474-vulpin","1816644-barding","1816645-dwarf","1816646-elf","1816647-hobbit","1816648-man-of-bree","1816649-ranger-of-the-north"]');
+    const playableRaceIds = JSON.parse('["1751436-dwarf","1751437-elf","1751440-halfling","1751441-human","1751434-aasimar","1751435-dragonborn","1751438-gnome","1751439-goliath","1751442-orc","1751443-tiefling","1026377-aarakocra","1026378-aasimar","1026379-air-genasi","1026380-bugbear","1026381-centaur","1026382-changeling","1026383-deep-gnome","1026384-duergar","1026385-earth-genasi","1026386-eladrin","814913-fairy","1026387-firbolg","1026388-fire-genasi","1026389-githyanki","1026390-githzerai","1026391-goblin","1026392-goliath","814914-harengon","1026393-hobgoblin","1026394-kenku","1026395-kobold","1026396-lizardfolk","1026397-minotaur","1026398-orc","1026399-satyr","1026400-sea-elf","1026401-shadar-kai","1026402-shifter","1026403-tabaxi","1026404-tortle","1026405-triton","1026406-water-genasi","1026407-yuan-ti","1214237-kender","1121694-astral-elf","1121695-autognome","1121696-giff","1121698-plasmoid","1121699-thri-kreen","883673-owlin","706719-lineages","410992-leonin","410993-satyr","260666-changeling","260720-kalashtar","260758-shifter","260828-warforged","169862-verdan","67624-centaur","67607-loxodon","67599-minotaur","67585-simic-hybrid","67582-vedalken","40-feral-tiefling","41-tortle","229754-locathah","302384-grung","25294-gith","24-aasimar","32-bugbear","25-firbolg","33-goblin","34-hobgoblin","28-kenku","516426-kobold","29-lizardfolk","516433-orc","30-tabaxi","31-triton","37-yuan-ti-pureblood","4-aarakocra","23-genasi","22-goliath","16-dragonborn","13-dwarf","3-elf","18-gnome","20-half-elf","14-halfling","2-half-orc","1-human","7-tiefling","1726258-bearfolk","1726259-darakhul","1726260-erina","1726261-quickstep","1726262-ratatosk","1726263-ravenfolk","1726264-satarre","1726265-shade","1726266-shadow-goblin","1726267-umbral-human","1699132-the-disembodied","1699133-wechselkind","1891766-dara","1891767-elf","1891768-nakudama","1592465-cervan","1592466-corvum","1592467-gallus","1592468-hedge","1592469-jerbeen","1592470-luma","1592471-mapach","1592472-raptor","1592473-strig","1592474-vulpin","1882284-cnidaran","1882285-cyclopian","1882286-gobboc","1882287-golynn","1882288-rakin","1816644-barding","1816645-dwarf","1816646-elf","1816647-hobbit","1816648-man-of-bree","1816649-ranger-of-the-north","1830523-etherean","1830524-geleton"]');
 
     const uglyCapitalization = function(str) {
         let capitalizeNext = true;

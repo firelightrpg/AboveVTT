@@ -73,12 +73,12 @@ $(function() {
         window.MYSTREAMID = uuid();
         window.JOINTHEDICESTREAM = window.EXPERIMENTAL_SETTINGS['streamDiceRolls'];
         
-        const allDiceRegex = /\d+d(?:100|20|12|10|8|6|4)(?:kh\d+|kl\d+|ro(<|<=|>|>=|=)\d+)*/g; // ([numbers]d[diceTypes]kh[numbers] or [numbers]d[diceTypes]kl[numbers]) or [numbers]d[diceTypes]
-        const validExpressionRegex = /^[dkhlro<=>\s\d+\-\(\)]*$/g; // any of these [d, kh, kl, spaces, numbers, +, -] // Should we support [*, /] ?
+        const allDiceRegex = /\d+d(?:100|20|12|10|8|6|4)(?:kh\d+|kl\d+|ro(<|<=|>|>=|=)\d+)*/gi; // ([numbers]d[diceTypes]kh[numbers] or [numbers]d[diceTypes]kl[numbers]) or [numbers]d[diceTypes]
+        const validExpressionRegex = /^[dkhlro<=>\s\d+\-\(\)]*$/gi; // any of these [d, kh, kl, spaces, numbers, +, -] // Should we support [*, /] ?
         const validModifierSubstitutions = /(?<!\w)(str|dex|con|int|wis|cha|pb)(?!\w)/gi // case-insensitive shorthand for stat modifiers as long as there are no letters before or after the match. For example `int` and `STR` would match, but `mint` or `strong` would not match.
-        const diceRollCommandRegex = /^\/(r|roll|save|hit|dmg|skill|heal)\s/; // matches only the slash command. EG: `/r 1d20` would only match `/r`
-        const multiDiceRollCommandRegex = /\/(ir|r|roll|save|hit|dmg|skill|heal) [^\/]*/g; // globally matches the full command. EG: `note: /r 1d20 /r2d4` would find ['/r 1d20', '/r2d4']
-        const allowedExpressionCharactersRegex = /^(d\d|\d+d\d+|kh\d+|kl\d+|ro(<|<=|>|>=|=)\d+|\+|-|\d+|\s+|STR|str|DEX|dex|CON|con|INT|int|WIS|wis|CHA|cha|PB|pb)*/; // this is explicitly different from validExpressionRegex. This matches an expression at the beginning of a string while validExpressionRegex requires the entire string to match. It is also explicitly declaring the modifiers as case-sensitive because we can't search the entire thing as case-insensitive because the `d` in 1d20 needs to be lowercase.
+        const diceRollCommandRegex = /^\/(r|roll|save|hit|dmg|skill|heal)\s/gi; // matches only the slash command. EG: `/r 1d20` would only match `/r`
+        const multiDiceRollCommandRegex = /\/(ir|r|roll|save|hit|dmg|skill|heal) [^\/]*/gi; // globally matches the full command. EG: `note: /r 1d20 /r2d4` would find ['/r 1d20', '/r2d4']
+        const allowedExpressionCharactersRegex = /^(d\d|\d+d\d+|kh\d+|kl\d+|ro(<|<=|>|>=|=)\d+|\+|-|\d+|\s+|STR|DEX|CON|INT|WIS|CHA|PB)*/gi; // this is explicitly different from validExpressionRegex. This matches an expression at the beginning of a string while validExpressionRegex requires the entire string to match. It is also explicitly declaring the modifiers as case-sensitive because we can't search the entire thing as case-insensitive because the `d` in 1d20 needs to be lowercase.
 
         if(window.EXPERIMENTAL_SETTINGS['streamDiceRolls']){
           enable_dice_streaming_feature(window.JOINTHEDICESTREAM );
@@ -182,14 +182,22 @@ $(function() {
             }
           }                 
           if(event.data.msgType=='placeAoe' && (event.data.sendTo == window.PLAYER_ID || (window.DM && event.data.sendTo == false)))  {
-              let options = build_aoe_token_options(event.data.data.color, event.data.data.shape, event.data.data.feet / window.CURRENT_SCENE_DATA.fpsq, event.data.data.name)
+              let options = build_aoe_token_options(event.data.data.color, event.data.data.shape, event.data.data.feet / window.CURRENT_SCENE_DATA.fpsq, event.data.data.name, event.data.data.lineWidth / window.CURRENT_SCENE_DATA.fpsq)
               if(name == 'Darkness' || name == 'Maddening Darkness' ){
                 options = {
                   ...options,
                   darkness: true
                 }
               }
-              place_aoe_token_in_centre(options)
+              //if single token selected, place there:
+              if(window.CURRENTLY_SELECTED_TOKENS.length == 1) {
+                place_aoe_token_at_token(options, window.TOKEN_OBJECTS[window.CURRENTLY_SELECTED_TOKENS[0]]);
+              } 
+              else if(window.TOKEN_OBJECTS[event.data.data.tokenId] != undefined){
+                place_aoe_token_at_token(options, window.TOKEN_OBJECTS[event.data.data.tokenId]);
+              }else {
+                place_aoe_token_in_centre(options)
+              }
           }      
           if(!window.DM){
             if(event.data.msgType == 'CharacterData'){
@@ -211,16 +219,12 @@ $(function() {
                   window.Projecting = true;
                   if(event.data.zoom == false || (windowRatio != 1 && window.ZOOM == event.data.zoom * windowRatio)){
                     let viewPos = convert_point_from_map_to_view(event.data.mapPos.x, event.data.mapPos.y) 
-                    window.scroll(viewPos.x - window.innerWidth/2 + sidebarSize/2 - 20, viewPos.y - window.innerHeight/2 - 20);  //20 for scrollbar  
-                  }
-                  else if(windowRatio != 1){
-                    change_zoom(event.data.zoom);
-                    window.scroll(event.data.x - window.innerWidth/2 + sidebarSize/2, event.data.y - window.innerHeight/2);          
-                    change_zoom(event.data.zoom * windowRatio)
+                    window.scroll(viewPos.x-window.innerWidth/2+sidebarSize/2+20, viewPos.y-window.innerHeight/2+20); //20 for scrollbar width
                   }
                   else{              
                     change_zoom(event.data.zoom);
-                    window.scroll(event.data.x - window.innerWidth/2 + sidebarSize/2, event.data.y - window.innerHeight/2);    
+                    let viewPos = convert_point_from_map_to_view(event.data.mapPos.x, event.data.mapPos.y) 
+                    window.scroll(viewPos.x-window.innerWidth/2+sidebarSize/2+20, viewPos.y-window.innerHeight/2+20); //20 for scrollbar width    
                   }
                 })
                 
@@ -279,84 +283,6 @@ function addExtensionPathStyles(){ // some above server images moved out of exte
     body{
       --onedrive-svg: url('${window.EXTENSION_PATH}images/Onedrive_icon.svg');
       --onedrive-mask: url('${window.EXTENSION_PATH}images/Onedrive_icon.png');
-    }
-    .aoe-style-fire{
-      background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/fire_background.png);
-    }
-    .aoe-style-lightning{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/lightning.png);
-    }
-    .aoe-style-slashing{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/slashing.png);
-    }
-    .aoe-style-darkness{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/fire_background.png);
-    }
-    .aoe-style-fog-cloud{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/fog_cloud_tileable.png) !important;
-    }
-    .aoe-style-hypnotic-pattern{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/hypnotic-pattern.png) !important;
-    }
-    .aoe-style-stinking-cloud{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/fog_cloud_tileable.png) !important;
-    }
-    .aoe-style-web{
-        background-image: url(https://abovevtt-assets.s3.eu-central-1.amazonaws.com/aoe/tileable3pxsquareweb.png) !important;
-    }
-
-    [data-animation='fairy-fx'] .islight,
-    .aura-element[data-animation='fairy-fx'][id*='aura_'] {
-        -webkit-mask-image: url('https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/fairys.png');
-    }
-
-    [data-animation='fairy-fx'] .islight:before,
-    .aura-element[data-animation='fairy-fx'][id*='aura_']:before {
-        -webkit-mask-image: url('https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/fairys.png');
-    }
-
-    [data-animation='spore-fx'] .islight,
-    .aura-element[data-animation='spore-fx'][id*='aura_'] {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/spore.png");
-    }
-
-    [data-animation='lightning-fx'] .islight,
-    .aura-element[data-animation='lightning-fx'][id*='aura_'] {
-        --mask-1: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/lightningcircle.png");
-    }
-
-    [data-animation='magic-circle-fx'] .islight,
-    .aura-element[data-animation='magic-circle-fx'][id*='aura_'] {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/magiccircle1.png");
-    }
-
-    [data-animation='magic-circle-2-fx'] .islight,
-    .aura-element[data-animation='magic-circle-2-fx'][id*='aura_'] {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/magiccircle2.png");
-    }
-    [data-animation='hurricane-fx'] .islight,
-    .aura-element[data-animation='hurricane-fx'][id*='aura_'] {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/hurricane_cloud.png");
-    }
-
-    [data-animation='hurricane-fx'] .islight:before,
-    .aura-element[data-animation='hurricane-fx'][id*='aura_']:before
-    {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/lightning_2.png");
-    }
-    [data-animation='snow-fx'] .islight:before,
-    .aura-element[data-animation='snow-fx'][id*='aura_']:before,
-    [data-animation='snow-fx'] .islight:after,
-    .aura-element[data-animation='snow-fx'][id*='aura_']:after
-    {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/snow.png");
-    }
-    [data-animation='bubble-fx'] .islight:before,
-    .aura-element[data-animation='bubble-fx'][id*='aura_']:before,
-    [data-animation='bubble-fx'] .islight:after,
-    .aura-element[data-animation='bubble-fx'][id*='aura_']:after
-    {
-        -webkit-mask-image: url("https://abovevtt-assets.s3.eu-central-1.amazonaws.com/mask-images/bubble.png");
     }
   </style>`
 
@@ -481,7 +407,13 @@ async function start_above_vtt_for_dm() {
   $(window).off('scroll.projectorMode').on("scroll.projectorMode", projector_scroll_event);
   remove_loading_overlay();
 }
-
+const debounceResizeUI = mydebounce(function(){
+  init_character_page_sidebar();
+  reposition_player_sheet();
+  if(!window.showPanel){
+    hide_sidebar(false);
+  }
+}, 100)
 async function start_above_vtt_for_players() {
   if (!is_abovevtt_page() || !is_characters_page() || window.DM) {
     throw new Error(`start_above_vtt_for_players cannot start on ${window.location.href}; window.DM: ${window.DM}`);
@@ -505,13 +437,7 @@ async function start_above_vtt_for_players() {
     if (window.showPanel === undefined) {
       window.showPanel = is_sidebar_visible();
     }
-    init_character_page_sidebar();
-    reposition_player_sheet();
-    setTimeout(function(){
-      if(!window.showPanel){
-        hide_sidebar(false);
-      }
-    }, 1000);
+    debounceResizeUI();
     if(!window.CURRENT_SCENE_DATA.is_video || !window.CURRENT_SCENE_DATA.player_map.includes('youtu')){
       $("#youtube_controls_button").css('visibility', 'hidden');
     }

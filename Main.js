@@ -1219,6 +1219,9 @@ function minimize_player_monster_window_double_click(titleBar) {
  */
 function init_controls() {
 	if($("#switch_gamelog").length > 0){
+			if($('#settings-panel').length == 0){
+				init_sidebar_tabs();
+			}
 		return;
 	}
 
@@ -2057,6 +2060,7 @@ function is_supported_version(versionString) {
  * @returns void
  */
 function init_character_page_sidebar() {
+
 	if ($(".ct-sidebar__portal").length == 0) {
 		// not ready yet, try again in a second
 		setTimeout(function() {
@@ -2064,13 +2068,14 @@ function init_character_page_sidebar() {
 		}, 1000);
 		return;
 	}
-
-	// Open the gamelog, and lock it open
 	let gameLogButton = $("div.ct-character-header__group--game-log.ct-character-header__group--game-log-last, [data-original-title='Game Log'] button")
 	if(gameLogButton.length == 0){
 	  gameLogButton = $(`[d='M243.9 7.7c-12.4-7-27.6-6.9-39.9 .3L19.8 115.6C7.5 122.8 0 135.9 0 150.1V366.6c0 14.5 7.8 27.8 20.5 34.9l184 103c12.1 6.8 26.9 6.8 39.1 0l184-103c12.6-7.1 20.5-20.4 20.5-34.9V146.8c0-14.4-7.7-27.7-20.3-34.8L243.9 7.7zM71.8 140.8L224.2 51.7l152 86.2L223.8 228.2l-152-87.4zM48 182.4l152 87.4V447.1L48 361.9V182.4zM248 447.1V269.7l152-90.1V361.9L248 447.1z']`).closest('[role="button"]'); // this is a fall back to look for the gamelog svg icon and look for it's button.
 	}
-	gameLogButton.click()
+	// Open the gamelog, and lock it open
+
+	if(window.showPanel == undefined || window.showPanel == true)
+		gameLogButton.click()
 	$(".ct-sidebar__control--unlock").click();
 
 	$("#site-main").css({"display": "block", "visibility": "hidden"});
@@ -3337,6 +3342,7 @@ function init_help_menu() {
 				<div class="help-tabs">
 					<ul>
 						<li class="active"><a href="#tab1"> Keyboard shortcuts</a></li>
+						<li><a href="#tab19" class='popout' data-href="https://github.com/cyruzzo/AboveVTT/wiki" data-name='AboveVTT Wiki'>Wiki <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"></path><path d="M18 19H6c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1h5c.55 0 1-.45 1-1s-.45-1-1-1H5c-1.11 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6c0-.55-.45-1-1-1s-1 .45-1 1v5c0 .55-.45 1-1 1zM14 4c0 .55.45 1 1 1h2.59l-9.13 9.13c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0L19 6.41V9c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1h-5c-.55 0-1 .45-1 1z"></path></svg></a></li>
 						<li><a href="#tab2">FAQ</a></li>
 						<li><a href="#tab3">Scene Creation</a></li>
 						<li><a href="#tab4">Player UI</a></li>
@@ -3507,9 +3513,14 @@ function init_help_menu() {
 							<dd>Will cycle through fog & draw options if menu open</dd>
 						<dl>
 						<dl>
-							<dt>${getShiftKeyName()}/${getCtrlKeyName()} Click on Character Sheet Icon Rolls</dt>
+							<dt>${getShiftKeyName()}/${getModKeyName()} Click on Icon Rolls and Most Character/Extras/Monsters d20 Rolls</dt>
 							<dd>Will roll with ADV/DIS respectively</dd>
 						<dl>
+						<dl>
+							<dt>${getAltKeyName()} + ${getShiftKeyName()}/${getModKeyName()} Click on Icon Rolls and Most Character/Extras/Monsters d20 Rolls</dt>
+							<dd>Will roll with Super ADV/DIS respectively</dd>
+						<dl>
+		
 					</div>
 
 					<div id="tab2" class='googledoc bookmark' data-src="https://docs.google.com/document/d/e/2PACX-1vRSJ6Izvldq5c9z_d-9-Maa8ng1SUK2mGSQWkPjtJip0cy9dxAwAug58AmT9zRtJmiUx5Vhkp7hATSt/pub?embedded=true">
@@ -3564,6 +3575,11 @@ function init_help_menu() {
 
 
 	$('.help-tabs a').on('click', function() {
+
+		if($(this).hasClass('popout')){
+			window.open($(this).attr('data-href'), $(this).attr('data-name'), 'width=800,height=600');
+			return;
+		}
 		$('.help-tabs li').removeClass('active');
 		$(this).parent().addClass('active');
 		let currentTab = $(this).attr('href');
@@ -3853,6 +3869,7 @@ function show_player_sheet() {
 		"display": "",
 		"z-index": 110
 	});
+	$("[class*='styles_mobileNav']").toggleClass('visibleMobileNav', true);
 	$(".site-bar").css({
 		"display": "",
 		"z-index": 110
@@ -3865,6 +3882,7 @@ function show_player_sheet() {
 	}
 	$('#sheet_button').find(".ddbc-tab-options__header-heading").addClass("ddbc-tab-options__header-heading--is-active");
 	if (window.innerWidth < 1024) {
+		window.reopenPanel = is_sidebar_visible();
 		hide_sidebar();
 	}
 }
@@ -3877,10 +3895,11 @@ function hide_player_sheet() {
 	$("#character-tools-target").css({
 		"display": "none",
 	});
-	$(".ct-character-sheet__inner").css({
+	$(".ct-character-sheet__inner, [class*='styles_mobileNav']>div>button[class*='styles_navToggle']").css({
 		"display": "none",
 		"z-index": -1
 	});
+	$("[class*='styles_mobileNav']").toggleClass('visibleMobileNav', false);
 	if ($(".site-bar #lock_display").length == 0) {
 		// don't hide it if the DM is watching
 		$(".site-bar").css({
@@ -3890,7 +3909,9 @@ function hide_player_sheet() {
 	}
 	$("#sheet_resize_button").hide();
 	$('#sheet_button').find(".ddbc-tab-options__header-heading").removeClass("ddbc-tab-options__header-heading--is-active");
-	if (window.innerWidth < 1024) {
+	
+	if (window.innerWidth < 1024 && window.reopenPanel == true){
+		delete window.reopenPanel;
 		show_sidebar();
 	}
 }

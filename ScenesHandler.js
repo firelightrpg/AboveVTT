@@ -54,7 +54,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 	}
 
 	async switch_scene(sceneid, callback = null) { //This is still used for grid wizard loading since we load so many times. -- THIS FUNCTION SHOULD DIE AFTER EVERYTHING IS IN THE CLOUD
-		
+		$('canvas#aligner2, canvas#aligner1').remove();
 		let grid_5 = function() {
 			$("#scene_selector_toggle").show();
 			$("#tokens").show();
@@ -1007,16 +1007,27 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 		this.scene.tokens[id]=options;
 
 		if (!(id in window.TOKEN_OBJECTS)) {
-
 			window.TOKEN_OBJECTS[id] = new Token(options);
 
 			window.TOKEN_OBJECTS[id].sync = mydebounce(function(options) {
-				if(window.TOKEN_OBJECTS[id])
-					window.MB.sendMessage('custom/myVTT/token', options);
+				window.MB.sendMessage('custom/myVTT/token', options);
 			}, 300);
 		}
 
-		window.TOKEN_OBJECTS[id].place_sync_persist();
+		if(options.repositionAoe != undefined){
+			window.TOKEN_OBJECTS[id].place(0);
+			let origin, dx, dy;		
+			origin = getOrigin(window.TOKEN_OBJECTS[id]);
+			dx = origin.x - options.repositionAoe.x;
+			dy = origin.y - options.repositionAoe.y;				
+			options.left = `${parseFloat(options.left) - dx}px`;
+			options.top = `${parseFloat(options.top) - dy}px`;
+			delete options.repositionAoe;
+		}
+		
+		window.TOKEN_OBJECTS[id].place(0);
+		window.TOKEN_OBJECTS[id].sync($.extend(true, {}, options));
+
 	}
 
 

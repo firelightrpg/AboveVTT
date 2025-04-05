@@ -40,7 +40,7 @@ const availableToAoe = [
 
 
 
-const throttleLight = throttle(() => {requestAnimationFrame(redraw_light)}, 1000/8);
+const throttleLight = throttle((darknessMoved = false) => {requestAnimationFrame(()=>{redraw_light(darknessMoved)})}, 1000/8);
 const throttleTokenCheck = throttle(() => {requestAnimationFrame(()=>{do_check_token_visibility()})}, 1000/4);
 const debounceStoreExplored = mydebounce((exploredCanvas) => {		
 	let dataURI = exploredCanvas.toDataURL('image/jpg')
@@ -55,14 +55,14 @@ const debounceStoreExplored = mydebounce((exploredCanvas) => {
 	  const objectStoreRequest = objectStore.add({exploredId: `explore${window.gameId}${window.CURRENT_SCENE_DATA.id}`, 'exploredData': dataURI});
 	};
 }, 5000)
-let debounceLightChecks = mydebounce(() => {		
+let debounceLightChecks = mydebounce((darknessMoved = false) => {		
 		if(window.DRAGGING)
 			return;
 		if(window.walls?.length < 5){
 			redraw_light_walls();	
 		}
 		//let promise = [new Promise (_ => setTimeout(redraw_light(), 1000))];
-		requestAnimationFrame(redraw_light);
+		requestAnimationFrame(()=>{redraw_light(darknessMoved)});
 		debounceAudioChecks();
 		
 }, 20);
@@ -71,14 +71,14 @@ let debounceAudioChecks = mydebounce(() => {
 	checkAudioVolume();
 }, 20)
 
-let longDebounceLightChecks = mydebounce(() => {		
+let longDebounceLightChecks = mydebounce((darknessMoved = false) => {		
 		if(window.DRAGGING)
 			return;
 		if(window.walls?.length < 5){
 			redraw_light_walls();	
 		}
 		//let promise = [new Promise (_ => setTimeout(redraw_light(), 1000))];
-		requestAnimationFrame(redraw_light);
+		requestAnimationFrame(()=>{redraw_light(darknessMoved)});
 		debounceAudioChecks();
 }, 300);
 
@@ -254,7 +254,7 @@ class Token {
 
 	isLineAoe() {
 		// 1 being a single square which is usually 5ft
-		return (this.options.size === "" || this.options.size === 0) && this.options.gridWidth === 1 && this.options.gridHeight > 0
+		return (this.options.size === "" || this.options.size === 0) && ((this.options.gridWidth === 1 && this.options.gridHeight > 0) || this.options.lineAoe == '1')
 	}
 
 	isAoe() {
@@ -433,15 +433,22 @@ class Token {
 		return ct_list_tokens().includes(this.options.id);
 	}
 
-	size(newSize) {
+	size(newSize, linewidth=false) {
+
+		let originalOrigin;
+		if(this.isAoe()){
+			originalOrigin = getOrigin(window.TOKEN_OBJECTS[this.options.id]);
+		}
 		this.MAX_TOKEN_SIZE = Math.max(window.CURRENT_SCENE_DATA.width*window.CURRENT_SCENE_DATA.scale_factor, window.CURRENT_SCENE_DATA.height*window.CURRENT_SCENE_DATA.scale_factor);
 
 		// Clamp token size to min/max token size
 		newSize = clamp(newSize, this.MIN_TOKEN_SIZE, this.MAX_TOKEN_SIZE);
 
 		this.update_from_page();
-
-		if(this.isLineAoe()) {
+		if(this.isLineAoe() && linewidth == true){
+			this.options.gridWidth = newSize / parseFloat(window.CURRENT_SCENE_DATA.hpps);
+		}
+		else if(this.isLineAoe()) {
 			// token is not proportional such as a line aoe token
 			this.options.gridHeight = newSize / parseFloat(window.CURRENT_SCENE_DATA.hpps);
 		}
@@ -450,7 +457,24 @@ class Token {
 			this.options.gridSquares = newSize / parseFloat(window.CURRENT_SCENE_DATA.hpps);
 		}
 
-		this.place_sync_persist();
+		if(this.isAoe()){
+			let token = $("#tokens").find(`div[data-id='${this.options.id}']`);
+			token.css({
+				width: this.sizeWidth(),
+				height: this.sizeHeight()
+			});			
+			let origin = getOrigin(window.TOKEN_OBJECTS[this.options.id]);
+			let dx = origin.x - originalOrigin.x;
+			let dy = origin.y - originalOrigin.y;				
+			
+			this.options.left = `${parseFloat(this.options.left) - dx}px`;
+			this.options.top = `${parseFloat(this.options.top) - dy}px`;
+			this.place(0);
+			this.sync($.extend(true, {}, this.options))
+		}
+		else{
+			this.place_sync_persist()
+		}
 	}
 
 	imageSize(imageScale) {
@@ -490,7 +514,7 @@ class Token {
 			// only allow the DM to delete tokens unless the token specifies deleteableByPlayers == true which is used by AoE tokens and maybe others
 			return;
 		}
-		ct_remove_token(this, false);
+		
 		let id = this.options.id;
 		let selector = "#tokens div[data-id='" + id + "']";
 		$(selector).remove();
@@ -512,9 +536,7 @@ class Token {
 		$(`.aura-element-container-clip[id='${id}']`).remove()
 		$(`[data-darkness='darkness_${id}']`).remove();
 		$(`[data-notatoken='notatoken_${id}']`).remove()
-		if (persist == true) {	
-			window.MB.sendMessage("custom/myVTT/delete_token",{id:id});
-		}
+
 		if(this.options?.audioChannel?.audioId != undefined){
 			window.MIXER.deleteChannel(this.options.audioChannel.audioId)
 		}
@@ -547,6 +569,14 @@ class Token {
 				window.TOKEN_OBJECTS[this.options.combatGroup].delete();
 			}
 		}
+		if(this.options.darkness){
+			redraw_drawn_light();
+		}
+
+		ct_remove_token(this, false);
+		if (persist == true) {	
+			window.MB.sendMessage("custom/myVTT/delete_token",{id:id});
+		}
 		debounceLightChecks();
 		update_pc_token_rows();
 	}
@@ -566,7 +596,7 @@ class Token {
 		let imageScale = (this.options.imageSize != undefined) ? this.options.imageSize : 1;
 
 		let selector = "div[data-id='" + this.options.id + "']";
-		let tokenElement = $("#tokens").find(selector).add(`[data-notatoken='notatoken_${this.options.id}']`);
+		let tokenElement = $("#tokens").find(selector).add(`[data-notatoken='notatoken_${this.options.id}']`).add(`[data-darkness='darkness_${this.options.id.replaceAll("/", "")}']`);
 		tokenElement.css("--token-rotation", newRotation + "deg");
 		tokenElement.css("--token-scale", imageScale);
 		tokenElement.find(".token-image").css("transform", `scale(var(--token-scale)) rotate(var(--token-rotation))`);
@@ -657,7 +687,7 @@ class Token {
 		) { return; }
 		let halfWidth = parseFloat(this.options.size)/2;
 		let inLos = this.isAoe() ? true : detectInLos(tokenPosition.x + halfWidth, tokenPosition.y + halfWidth) ;
-
+		const self = this;
 
 		if(window.CURRENT_SCENE_DATA.disableSceneVision == 1 || !this.options.auraislight || inLos){
 
@@ -671,8 +701,15 @@ class Token {
 
 			old.animate({left: this.options.left,top: this.options.top,}, { duration: 0, queue: true, 
 				complete: async function() {
-					// if we need to do something after queue - used to remove clone here
-				}
+					const darknessMoved = self.options.darkness;
+					if(self.options.darkness)
+						redraw_drawn_light();
+					
+					if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+						throttleLight(darknessMoved);
+					else
+						debounceLightChecks(darknessMoved)
+					}
 			});
 			if(!this.options.id.includes('exampleToken') && !this.options.combatGroupToken){
 				setTokenAuras(old, this.options);
@@ -696,6 +733,9 @@ class Token {
 					'--token-scale': old.css('--token-scale'),
     				'--token-rotation': old.css('--token-rotation')
 				})
+				
+				redraw_drawn_light();
+		
 			}
 			if(this.options.tokenStyleSelect == 'definitelyNotAToken' || this.options.underDarkness == true){
 				old.toggleClass('underDarkness', true);
@@ -775,6 +815,8 @@ class Token {
 		
 			this.sync($.extend(true, {}, this.options));
 		}
+
+
 	}
 
 	snap_to_closest_square() {
@@ -1856,6 +1898,7 @@ class Token {
 				let flyoutLocation = convert_point_from_map_to_view(parseInt(this.options.left), parseInt(this.options.top))
 				const noteId = this.options.id;
 				let hoverNoteTimer;
+				const tokenId=this.options.id;
 				conditionContainer.on({
 					'mouseover': function(e){
 						hoverNoteTimer = setTimeout(function () {
@@ -1863,10 +1906,11 @@ class Token {
 					            flyout.addClass("prevent-sidebar-modal-close"); // clicking inside the tooltip should not close the sidebar modal that opened it
 					            flyout.addClass('note-flyout');
 					            const tooltipHtml = $(noteHover);
-								window.JOURNAL.translateHtmlAndBlocks(tooltipHtml);	
+								window.JOURNAL.translateHtmlAndBlocks(tooltipHtml, noteId);	
 								add_journal_roll_buttons(tooltipHtml);
 								window.JOURNAL.add_journal_tooltip_targets(tooltipHtml);
-								add_stat_block_hover(tooltipHtml);
+								add_stat_block_hover(tooltipHtml, tokenId);
+								add_aoe_statblock_click(tooltipHtml, tokenId);
 
 								$(tooltipHtml).find('.add-input').each(function(){
 								    let numberFound = $(this).attr('data-number');
@@ -2043,7 +2087,7 @@ class Token {
 				if (old.css("left") != this.options.left || old.css("top") != this.options.top)
 					
 					remove_selected_token_bounding_box();
-					if(old.is(':animated')){
+					if(old.is(':animated') && animationDuration > 100){
 						// this token is being moved quickly, speed up the animation
 						animationDuration = 100;
 					}
@@ -2053,7 +2097,14 @@ class Token {
 						left: this.options.left,
 						top: this.options.top,
 					}, { duration: animationDuration, queue: true, complete: async function() {
-							// if we need to do something after queue - used to remove clone here
+							const darknessMoved = self.options.darkness;
+							if(self.options.darkness)
+								redraw_drawn_light();
+							
+							if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+								throttleLight(darknessMoved);
+							else
+								debounceLightChecks(darknessMoved)
 						}
 					});
 					
@@ -2112,7 +2163,16 @@ class Token {
 						old.animate({
 							width: this.sizeWidth(),
 							height: this.sizeHeight()
-						}, { duration: 1000, queue: false });
+						}, { duration: animationDuration, queue: false, complete: async function() {
+							const darknessMoved = self.options.darkness;
+							if(self.options.darkness)
+								redraw_drawn_light();
+							
+							if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+								throttleLight(darknessMoved);
+							else
+								debounceLightChecks(darknessMoved)
+						}});
 					}
 					
 					$(`.isAoe[data-id='${this.options.id}']:not(.token)`).css({
@@ -2127,7 +2187,7 @@ class Token {
 					$(`.isAoe[data-id='${this.options.id}']:not(.token)`).animate({
 						width: this.sizeWidth()/window.CURRENT_SCENE_DATA.scale_factor,
 						height: this.sizeHeight()/window.CURRENT_SCENE_DATA.scale_factor
-					}, { duration: 1000, queue: false });
+					}, { duration: animationDuration, queue: false });
 
 					let zindexdiff=(typeof this.options.zindexdiff == 'number') ? this.options.zindexdiff : Math.round(17/(this.sizeWidth()/window.CURRENT_SCENE_DATA.hpps));
 					this.options.zindexdiff = Math.max(zindexdiff, -5000);
@@ -2351,6 +2411,7 @@ class Token {
 					old.attr("data-tokendataname", this.options.tokendataname);
 				}
 				if(this.options.darkness){
+
 					let copyImage = $(`[data-darkness='darkness_${this.options.id}']`);
 					copyImage.css({
 						'--token-width': `calc(${this.sizeWidth()}px / var(--scene-scale))`,
@@ -2368,9 +2429,19 @@ class Token {
 							top: parseInt(parseFloat(this.options.top) / window.CURRENT_SCENE_DATA.scale_factor),
 						}, 
 						{ 
-							duration: animationDuration, queue: true
+							duration: animationDuration, queue: true, complete: async function() {
+								const darknessMoved = self.options.darkness;
+								if(self.options.darkness)
+									redraw_drawn_light();
+								
+								if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+									throttleLight(darknessMoved);
+								else
+									debounceLightChecks(darknessMoved)
+							}
 						}
 					);
+					redraw_drawn_light();
 				}
 				if(this.options.tokenStyleSelect == 'definitelyNotAToken' || this.options.underDarkness == true){
 						old.toggleClass('underDarkness', true);
@@ -2438,7 +2509,14 @@ class Token {
 									top: parseInt(parseFloat(this.options.top) / window.CURRENT_SCENE_DATA.scale_factor),
 								}, 
 								{ 
-									duration: animationDuration, queue: true
+									duration: animationDuration, queue: true, complete: async function() {
+										const darknessMoved = self.options.darkness;
+									
+										if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+											throttleLight();
+										else
+											debounceLightChecks()
+									}
 								}
 							);
 						}
@@ -2766,6 +2844,7 @@ class Token {
 			        tokenClone.removeClass(['token', 'VTTToken']);
 			        if($(`[data-darkness='darkness_${this.options.id}]'`).length == 0)
 			        	$('#light_container').append(tokenClone);
+			        redraw_drawn_light();
 			    }
 
 			    if(!this.options.id.includes('exampleToken')){
@@ -2825,6 +2904,7 @@ class Token {
 							if (get_avtt_setting_value("allowTokenMeasurement")){
 								WaypointManager.fadeoutMeasuring(window.PLAYER_ID)
 							}	
+
 							debounceLightChecks();
 
 							window.DRAGGING = false;
@@ -2977,8 +3057,16 @@ class Token {
 									WaypointManager.clearWaypoints(false);
 									WaypointManager.cancelFadeout(true);
 								}
-								const tokenMidX = parseInt(self.orig_left) + Math.round(self.options.size / 2);
-								const tokenMidY = parseInt(self.orig_top) + Math.round(self.options.size / 2);
+								let tokenMidX = parseInt(self.orig_left) + Math.round(self.options.size / 2);
+								let tokenMidY = parseInt(self.orig_top) + Math.round(self.options.size / 2);
+
+								if(self.isAoe() && self.options.imgsrc.match(/aoe-shape-cone|aoe-shape-line|aoe-shape-square/gi) && (window.dragSelectedTokens.length == 1 || shiftHeld)){					
+									let origin = getOrigin(self)
+									tokenMidX = origin.x;
+									tokenMidY = origin.y;
+								}
+								
+								
 
 								if(WaypointManager.numWaypoints > 0){
 									WaypointManager.checkNewWaypoint(tokenMidX/window.CURRENT_SCENE_DATA.scale_factor, tokenMidY/window.CURRENT_SCENE_DATA.scale_factor)
@@ -3073,17 +3161,7 @@ class Token {
 						
 						self.options.left = `${ui.position.left}px`;
 						self.options.top = `${ui.position.top}px`;
-						const allowTokenMeasurement = get_avtt_setting_value("allowTokenMeasurement")
-						
-						if (allowTokenMeasurement) {
-							const tokenMidX = tokenPosition.x + Math.round(self.sizeWidth() / 2);
-							const tokenMidY = tokenPosition.y + Math.round(self.sizeHeight() / 2);
-							WaypointManager.storeWaypoint(WaypointManager.currentWaypointIndex, window.BEGIN_MOUSEX/window.CURRENT_SCENE_DATA.scale_factor, window.BEGIN_MOUSEY/window.CURRENT_SCENE_DATA.scale_factor, tokenMidX/window.CURRENT_SCENE_DATA.scale_factor, tokenMidY/window.CURRENT_SCENE_DATA.scale_factor);		
-							WaypointManager.draw(Math.round(tokenPosition.x + (self.sizeWidth() / 2))/window.CURRENT_SCENE_DATA.scale_factor, Math.round(tokenPosition.y + self.sizeHeight() + 10)/window.CURRENT_SCENE_DATA.scale_factor);
-						}
-						if (!self.options.hidden) {
-							sendTokenPositionToPeers(tokenPosition.x, tokenPosition.y, self.options.id, allowTokenMeasurement);
-						}
+
 
 
 						//console.log("Changing to " +ui.position.left+ " "+ui.position.top);
@@ -3092,6 +3170,30 @@ class Token {
 						$(event.target).css("top",ui.position.top);*/
 						// END OF HACK TEST
 						requestAnimationFrame(() => {
+							const allowTokenMeasurement = get_avtt_setting_value("allowTokenMeasurement")
+							
+							if (allowTokenMeasurement) {
+								
+
+								if(self.isAoe() && self.options.imgsrc.match(/aoe-shape-cone|aoe-shape-line|aoe-shape-square/gi) && (window.dragSelectedTokens.length == 1 || shiftHeld)){					
+									let origin = getOrigin(self)
+									
+									WaypointManager.storeWaypoint(WaypointManager.currentWaypointIndex, window.BEGIN_MOUSEX/window.CURRENT_SCENE_DATA.scale_factor, window.BEGIN_MOUSEY/window.CURRENT_SCENE_DATA.scale_factor, origin.x/window.CURRENT_SCENE_DATA.scale_factor, origin.y/window.CURRENT_SCENE_DATA.scale_factor);		
+									WaypointManager.draw(origin.x/window.CURRENT_SCENE_DATA.scale_factor, origin.y/window.CURRENT_SCENE_DATA.scale_factor);	
+								}
+								else{
+									let tokenMidX = tokenPosition.x + Math.round(self.sizeWidth() / 2);
+									let tokenMidY = tokenPosition.y + Math.round(self.sizeHeight() / 2);
+
+									WaypointManager.storeWaypoint(WaypointManager.currentWaypointIndex, window.BEGIN_MOUSEX/window.CURRENT_SCENE_DATA.scale_factor, window.BEGIN_MOUSEY/window.CURRENT_SCENE_DATA.scale_factor, tokenMidX/window.CURRENT_SCENE_DATA.scale_factor, tokenMidY/window.CURRENT_SCENE_DATA.scale_factor);		
+									WaypointManager.draw(Math.round(tokenPosition.x + (self.sizeWidth() / 2))/window.CURRENT_SCENE_DATA.scale_factor, Math.round(tokenPosition.y + self.sizeHeight() + 10)/window.CURRENT_SCENE_DATA.scale_factor);
+								}
+
+
+							}
+							if (!self.options.hidden) {
+								sendTokenPositionToPeers(tokenPosition.x, tokenPosition.y, self.options.id, allowTokenMeasurement);
+							}
 							let offsetLeft = ui.position.left - parseFloat(self.orig_left);
 							let offsetTop = ui.position.top - parseFloat(self.orig_top);
 							let el = ui.helper.parent().parent().find("#aura_" + ui.helper.attr("data-id").replaceAll("/", ""));
@@ -3247,6 +3349,7 @@ class Token {
 							if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
 								throttleLight();
 						});
+
 					}
 				});
 				let classToClick = null;
@@ -3370,9 +3473,14 @@ class Token {
 				        $('#token_map_items').append(tokenClone);
 					}	
 			    }
+
 			    if(window.DM)
 					setTokenAudio(tok, this)
-
+				
+				if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
+					throttleLight();
+				else
+					longDebounceLightChecks();
 				console.groupEnd()
 			}
 			// HEALTH AURA / DEAD CROSS
@@ -3385,12 +3493,6 @@ class Token {
 				new Promise(() => this.update_health_aura(token)),
 				new Promise(() => this.update_dead_cross(token)),
 				new Promise(() => toggle_player_selectable(this, token)),
-				new Promise(() => {
-					if(window.EXPERIMENTAL_SETTINGS.dragLight == true)
-						throttleLight();
-					else
-						debounceLightChecks()
-				}),
 				new Promise(debounceAudioChecks)
 			]).catch((error) => {
 		        showError(error, `Failed to start AboveVTT on ${window.location.href}`);
@@ -3665,7 +3767,11 @@ function place_token_at_map_point(tokenObject, x, y) {
 	}
 
 	if (options.size == undefined) {
-		if (options.sizeId != undefined) {
+		if (options.tokenSize != undefined && parseFloat(options.tokenSize) != NaN) {
+			// tokenSize was specified, convert it to size. tokenSize is the number of squares this token fills
+			options.size = Math.round(window.CURRENT_SCENE_DATA.hpps) * parseFloat(options.tokenSize);
+		} 
+		else if (options.sizeId != undefined) {
 			// sizeId was specified, convert it to size. This is used when adding from the monster pane
 			if (options.sizeId == 2) {
 				options.size = Math.round(window.CURRENT_SCENE_DATA.hpps) * 0.5;
@@ -3679,10 +3785,8 @@ function place_token_at_map_point(tokenObject, x, y) {
 				// default to small/medium size
 				options.size = Math.round(window.CURRENT_SCENE_DATA.hpps) * 1;
 			}
-		} else if (options.tokenSize != undefined && parseFloat(options.tokenSize) != NaN) {
-			// tokenSize was specified, convert it to size. tokenSize is the number of squares this token fills
-			options.size = Math.round(window.CURRENT_SCENE_DATA.hpps) * parseFloat(options.tokenSize);
-		} else {
+		} 
+		else {
 			// default to small/medium size
 			options.size = Math.round(window.CURRENT_SCENE_DATA.hpps) * 1;
 		}
@@ -3713,7 +3817,6 @@ function place_token_at_map_point(tokenObject, x, y) {
 	if (is_player_id(options.id)) {
 		update_pc_token_rows();
 	}
-	window.MB.sendMessage('custom/myVTT/token', options);
 
 	
 	fetch_and_cache_scene_monster_items();
@@ -4150,6 +4253,8 @@ function setTokenLight (token, options) {
 		const daylightOpacityValue = window.CURRENT_SCENE_DATA?.daylight ? window.CURRENT_SCENE_DATA.daylight.replace(/[a-zA-Z\(\)\s]/g, '').split(',').splice(3, 1) : 1;
 
 		let clippath = window.lineOfSightPolygons ? `path("${window.lineOfSightPolygons[options.id]?.clippath}")` : undefined;
+		let devilsightClip = window.lineOfSightPolygons ? `path("${window.lineOfSightPolygons[options.id]?.devilsightClip}")` : undefined;
+
 		const lightStyles = `width:${totalSize }px;
 							height:${totalSize }px;
 							background-image:${lightBg};
@@ -4190,7 +4295,7 @@ function setTokenLight (token, options) {
 		token.parent().parent().find(".aura-element-container-clip[id='" + options.id+"']").remove();
 
 
-		const lightElement = options.sight =='devilsight' || options.sight =='truesight' ?  $(`<div class='aura-element-container-clip light' style='clip-path: ${clippath};' id='${options.id}'><div class='aura-element' id="light_${tokenId}" data-id='${options.id}' style='${lightStyles}'></div></div><div class='aura-element-container-clip vision' style='clip-path: ${clippath};' id='${options.id}'><div class='aura-element darkvision' id="vision_${tokenId}" data-id='${options.id}' style='${visionStyles}'></div></div>`) : $(`<div class='aura-element-container-clip light' style='clip-path: ${clippath};' id='${options.id}'><div class='aura-element' id="light_${tokenId}" data-id='${options.id}' style='${lightStyles}'></div><div class='aura-element darkvision' id="vision_${tokenId}" data-id='${options.id}' style='${visionStyles}'></div></div>`) 
+		const lightElement = options.sight =='devilsight' || options.sight =='truesight' ?  $(`<div class='aura-element-container-clip light' style='clip-path: ${clippath};' id='${options.id}'><div class='aura-element' id="light_${tokenId}" data-id='${options.id}' style='${lightStyles}'></div></div><div class='aura-element-container-clip vision' style='clip-path: ${devilsightClip};' id='${options.id}'><div class='aura-element darkvision' id="vision_${tokenId}" data-id='${options.id}' style='${visionStyles}'></div></div>`) : $(`<div class='aura-element-container-clip light' style='clip-path: ${clippath};' id='${options.id}'><div class='aura-element' id="light_${tokenId}" data-id='${options.id}' style='${lightStyles}'></div><div class='aura-element darkvision' id="vision_${tokenId}" data-id='${options.id}' style='${visionStyles}'></div></div>`) 
 
 		lightElement.contextmenu(function(){return false;});
 		if(visionRadius != 0 || totallight != 0 || options.player_owned || options.share_vision == true || options.share_vision == window.myUser || is_player_id(options.id)){
@@ -4714,6 +4819,7 @@ async function do_draw_selected_token_bounding_box() {
 						let token = window.TOKEN_OBJECTS[id];
 						token.place_sync_persist();
 					}
+					draw_selected_token_bounding_box();	
 				},
 			});
 
@@ -4739,9 +4845,10 @@ async function do_draw_selected_token_bounding_box() {
 					
 					
 					for (let i = 0; i < window.CURRENTLY_SELECTED_TOKENS.length; i++) {
+
 						let id = window.CURRENTLY_SELECTED_TOKENS[i];
 						let token = window.TOKEN_OBJECTS[id];
-						$(`#scene_map_container .token[data-id='${id}']`).remove();
+						$(`#scene_map_container .token[data-id='${id}'], [data-darkness='darkness_${id.replaceAll("/", "")}']`).remove();
 						
 					
 						let sceneToken = $(`div.token[data-id='${id}']`)
@@ -4781,8 +4888,6 @@ async function do_draw_selected_token_bounding_box() {
 					}
 						
 						
-
-					
 
 
 				
@@ -4844,16 +4949,14 @@ async function do_draw_selected_token_bounding_box() {
 						
 					
 					}
-
 					$(`.grouprotate`).remove();
 					for (let i = 0; i < window.CURRENTLY_SELECTED_TOKENS.length; i++) {
 						let id = window.CURRENTLY_SELECTED_TOKENS[i];
 						let token = window.TOKEN_OBJECTS[id];
 						token.selected = true;
 						token.place_sync_persist();
-					
-						draw_selected_token_bounding_box();
-					}			
+					}		
+					draw_selected_token_bounding_box();	
 				},
 			});
 		}

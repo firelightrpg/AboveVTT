@@ -40,28 +40,38 @@ function build_and_display_stat_block_with_data(monsterData, container, tokenId,
             display_stat_block_in_container(new MonsterStatBlock(cached_monster_items[monsterId].monsterData), container, tokenId);
           }
           else{
-            display_stat_block_in_container(new MonsterStatBlock(cached_open5e_items[monsterId].monsterData), container, tokenId);}
+            display_stat_block_in_container(new MonsterStatBlock(cached_open5e_items[monsterId].monsterData), container, tokenId);
+          }
         }, open5e);
     }
 }
 
-function build_stat_block_for_copy(listItem, options){
+function build_stat_block_for_copy(listItem, options, open5e = false){
   const monsterData = listItem.monsterData;
-  let cachedMonsterItem = cached_monster_items[monsterData.id];
-    if (cachedMonsterItem) {
-        // we have a cached monster. this data is the best data we have so display that instead of whatever we were given
-        create_token_inside(find_sidebar_list_item_from_path(RootFolder.MyTokens.path), undefined, undefined, undefined, options, build_monster_copy_stat_block(new MonsterStatBlock(cachedMonsterItem.monsterData)));
-    } else {
-       let monsterId = (monsterData.slug) ? monsterData.slug : monsterData.id
-        fetch_and_cache_monsters([monsterId], function () {
-           create_token_inside(find_sidebar_list_item_from_path(RootFolder.MyTokens.path), undefined, undefined, undefined, options, build_monster_copy_stat_block(new MonsterStatBlock(cached_monster_items[monsterId].monsterData)));
-        }, false);
-    }
+  const monsterId = open5e == true ? monsterData.slug : monsterData.id
+  const cachedMonsterItem = open5e == true ? cached_open5e_items[monsterId] : cached_monster_items[monsterId];
+  build_import_loading_indicator('Fetching Statblock Info');
+  if (cachedMonsterItem) {
+      // we have a cached monster. this data is the best data we have so display that instead of whatever we were given
+      create_token_inside(find_sidebar_list_item_from_path(RootFolder.MyTokens.path), undefined, undefined, undefined, options, build_monster_copy_stat_block(new MonsterStatBlock(cachedMonsterItem.monsterData)));
+      $(".import-loading-indicator").remove();
+  } else {
+    fetch_and_cache_monsters([monsterId], function (open5e = false) {
+      if(!open5e){
+         create_token_inside(find_sidebar_list_item_from_path(RootFolder.MyTokens.path), undefined, undefined, undefined, options, build_monster_copy_stat_block(new MonsterStatBlock(cached_monster_items[monsterId].monsterData)));
+      }
+      else{
+         create_token_inside(find_sidebar_list_item_from_path(RootFolder.MyTokens.path), undefined, undefined, undefined, options, build_monster_copy_stat_block(new MonsterStatBlock(cached_open5e_items[monsterId].monsterData)));
+   
+      }
+      $(".import-loading-indicator").remove();
+    }, open5e);
+  }  
 }
 
 function display_stat_block_in_container(statBlock, container, tokenId, customStatBlock = undefined) {
     const token = window.TOKEN_OBJECTS[tokenId];
-    const html = (customStatBlock) ? $(`
+    let html = (customStatBlock) ? $(`
     <div class="container avtt-stat-block-container custom-stat-block">${customStatBlock}</div>`) : build_monster_stat_block(statBlock, token);
     container.find("#noAccessToContent").remove(); // in case we're re-rendering with better data
     container.find(".avtt-stat-block-container").remove(); // in case we're re-rendering with better data
@@ -95,6 +105,7 @@ function display_stat_block_in_container(statBlock, container, tokenId, customSt
                 <a id="monster-image-to-gamelog-link" class="ddbeb-button monster-details-link" href="${token.options.imgsrc}" target='_blank' >Send Image To Gamelog</a>
             </div>`)
     }
+    add_aoe_statblock_click(container, tokenId);
     container.find("#monster-image-to-gamelog-link").on("click", function (e) {
         e.stopPropagation();
         e.preventDefault();
@@ -104,25 +115,53 @@ function display_stat_block_in_container(statBlock, container, tokenId, customSt
         send_html_to_gamelog(imgContainer[0].outerHTML);
     });
 
-   
-    container.find("p>em>strong, p>strong>em").off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
+    if(!customStatBlock)
+      container.find("div.image").append(statBlock.imageHtml(token));
+    container.find("a").attr("target", "_blank"); // make sure we only open links in new tabs
+    if(!customStatBlock)
+      scan_monster(container, statBlock, tokenId);
+    else
+      add_ability_tracker_inputs(container, tokenId)
+    // scan_creature_pane(container, statBlock.name, statBlock.image);
+    add_stat_block_hover(container, tokenId);
+    container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong").off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
       e.preventDefault();
-      if(e.altKey || e.shiftKey || e.ctrlKey || e.metaKey)
+      if(e.altKey || e.shiftKey || (!isMac() && e.ctrlKey) || e.metaKey)
         return;
-      let outerP = event.target.closest('p').outerHTML;
-      const regExFeature = new RegExp(`<p(.+)?>.+(${event.target.outerHTML.replace(/([\(\)])/g,"\\$1")}.+?)(</p>|<br ?/?>|<p>)`, 'gi');
-      let matched = `<p>${outerP.matchAll(regExFeature).next().value[2]}</p>`;
-      send_html_to_gamelog(matched);
+      let outerP = event.target.closest('p, div').outerHTML;
+      const regExFeature = new RegExp(`${event.target.outerHTML.replace(/([\(\)])/g,"\\$1")}[\\s\\S]+?(?=(<\/p>|<\/div>|<strong><em|<em><strong))`, 'gi');
+      let match = outerP.match(regExFeature);
+
+
+      if(match){
+        let matched = `<p>${match[0]}</p>`;
+        
+
+        if($(event.target.closest('p, div')).find('em>strong, strong>em').length == 1){
+          let nextParagraphs = $(event.target.closest('p, div')).nextUntil('p:has(>em>strong), p:has(>strong>em), div:has(>strong>em), div:has(>em>strong)');
+          for(let i=0; i<nextParagraphs.length; i++){   
+            matched = `${matched}${nextParagraphs[i].outerHTML.trim()}`;
+          }
+        }
+        
+         
+         matched = `<div>${matched}</div>`;
+        send_html_to_gamelog(matched);
+      }
+      
     })
 
-    container.find("p>em>strong, p>strong>em").off("click.roll").on("click.roll", function (e) {
+    container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong").off("click.roll").on("click.roll", function (e) {
       e.preventDefault();
       if($(event.target).text().includes('Recharge'))
         return;
-      let rollButtons = $(event.target.closest('p')).find('.avtt-roll-button');
+      let rollButtons = $(event.currentTarget).closest('em:has(strong), strong:has(em)').nextUntil(':has(.avtt-ability-roll-button)').closest('.avtt-roll-button:not([data-rolltype="recharge"])');
+      
+
+
       const displayName = window.TOKEN_OBJECTS[tokenId] ? window.TOKEN_OBJECTS[tokenId].options?.revealname == true ? window.TOKEN_OBJECTS[tokenId].options.name : `` : target.find(".mon-stat-block__name-link").text(); // Wolf, Owl, etc
       const creatureAvatar = window.TOKEN_OBJECTS[tokenId]?.options.imgsrc || statBlock.data.avatarUrl;
-
+      $(event.target.closest('p, div')).find('.avtt-aoe-button')?.click();
       for(let i = 0; i<rollButtons.length; i++){      
         let data = getRollData(rollButtons[i]);
         let diceRoll;
@@ -133,14 +172,14 @@ function display_stat_block_in_container(statBlock, container, tokenId, customSt
                 if(e.shiftKey){
                   diceRoll = new DiceRoll(`3d20kh1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
                  }
-                 else if(e.ctrlKey || e.metaKey){
+                 else if((!isMac() && e.ctrlKey) || e.metaKey){
                   diceRoll = new DiceRoll(`3d20kl1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
                  }
              }
              else if(e.shiftKey){
               diceRoll = new DiceRoll(`2d20kh1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
              }
-             else if(e.ctrlKey || e.metaKey){
+             else if((!isMac() && e.ctrlKey) || e.metaKey){
               diceRoll = new DiceRoll(`2d20kl1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
              }else{
               diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster")
@@ -157,21 +196,10 @@ function display_stat_block_in_container(statBlock, container, tokenId, customSt
         }
       }
     })
+    let abilities= container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong");
 
-
-    if(!customStatBlock)
-      container.find("div.image").append(statBlock.imageHtml(token));
-    container.find("a").attr("target", "_blank"); // make sure we only open links in new tabs
-    if(!customStatBlock)
-      scan_monster(container, statBlock, tokenId);
-    else
-      add_ability_tracker_inputs(container, tokenId)
-    // scan_creature_pane(container, statBlock.name, statBlock.image);
-    add_stat_block_hover(container);
-
-    let abilities = container.find("p>em>strong, p>strong>em");
     for(let i = 0; i<abilities.length; i++){
-      if($(abilities[i]).closest('p').find('.avtt-roll-button').length>0 && !$(abilities[i]).closest('p').text().includes('Recharge')){
+      if($(abilities[i]).closest('em:has(strong), strong:has(em)').nextUntil('em:has(strong), strong:has(em)').is('.avtt-roll-button')){
         $(abilities[i]).toggleClass('avtt-ability-roll-button', true);
       }
     }
@@ -183,7 +211,7 @@ function build_monster_stat_block(statBlock, token) {
         return `<div id='noAccessToContent' style='height: 100%;text-align: center;width: 100%;padding: 10px;font-weight: bold;color: #944;'>You do not have access to this content on DndBeyond.</div>`;
     }
     let statblockData = '';
-    if(get_avtt_setting_value('statBlockStyle') == 0 && statBlock.data.initiativeMod != undefined || get_avtt_setting_value('statBlockStyle') == 2){
+    if(get_avtt_setting_value('statBlockStyle') == 0 && statBlock.data.initiativeBonus != null || get_avtt_setting_value('statBlockStyle') == 2){
       statblockData =  `
         <div class="container avtt-stat-block-container ${(statBlock.data.slug) ? 'open5eMonster' : ''}">
           <div id="content" class="main content-container" style="padding:0!important">
@@ -219,10 +247,9 @@ function build_monster_stat_block(statBlock, token) {
                               <span class="mon-stat-block__attribute-label ddbc-creature-block__attribute-label">Initiative</span>
                               <span class="mon-stat-block__attribute-value">
                                 <span class="mon-stat-block__attribute-data-value">
-                                    ${statBlock.rollButton(`1d20`, statBlock.data.initiativeMod != undefined ? statBlock.data.initiativeMod : statBlock.dexModString, 'Roll', 'Initiative', parenthesis = true) }
-                                </span>
-                                ${statBlock.data.initiativeScore != undefined ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
-                                    ${statBlock.data.initiativeScore}
+                                    ${statBlock.initiativeButton()}</span>
+                                ${statBlock.data.initiativeBonus != null ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
+                                    (${statBlock.data.initiativeBonus+10})
                                 </span>` : ``}   
                               </span>       
                             </div>
@@ -476,6 +503,7 @@ function build_monster_stat_block(statBlock, token) {
           </div>
         </div>
       `
+
     }
     else{
       statblockData =  `
@@ -515,11 +543,11 @@ function build_monster_stat_block(statBlock, token) {
                           <span class="mon-stat-block__attribute-label ddbc-creature-block__attribute-label">Initiative</span>
                           <span class="mon-stat-block__attribute-value">
                             <span class="mon-stat-block__attribute-data-value">
-                                ${statBlock.rollButton(`1d20`, statBlock.data.initiativeMod != undefined ? statBlock.data.initiativeMod : statBlock.dexModString, 'Roll', 'Initiative', parenthesis = true) }
+                                ${statBlock.initiativeButton()}
                             </span>
-                            ${statBlock.data.initiativeScore != undefined ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
-                                ${statBlock.data.initiativeScore}
-                            </span>` : ``}    
+                            ${statBlock.data.initiativeBonus != null ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
+                                (${statBlock.data.initiativeBonus+10})
+                            </span>` : ``}   
                           </span>        
                         </div>
                         <div class="mon-stat-block__attribute ddbc-creature-block__attribute">
@@ -768,22 +796,16 @@ function build_monster_stat_block(statBlock, token) {
         </div>
         `;
     }
-    let $stat = $(statblockData); //spell tooltip data is incorrect in 2024 monsters - grab from monster page until fixed in monster api for encounter tool/MAPS
-    if(statBlock.data.spellTooltips != undefined){
-      $stat.find('.spell-tooltip').each((index, tooltip) =>{
-        $(tooltip).attr('data-tooltip-href', $(statBlock.data.spellTooltips[index]).attr('data-tooltip-href'))
-        $(tooltip).attr('href', $(statBlock.data.spellTooltips[index]).attr('href'))
-      })
-    }
 
-    return $stat[0].outerHTML;
+    statblockData = add_aoe_to_statblock(statblockData);
+    return statblockData;
 }
 function build_monster_copy_stat_block(statBlock) {
     if (!statBlock.userHasAccess) {
         return `<div id='noAccessToContent' style='height: 100%;text-align: center;width: 100%;padding: 10px;font-weight: bold;color: #944;'>You do not have access to this content on DndBeyond.</div>`;
     }
     let statblockData = '';
-    if(get_avtt_setting_value('statBlockStyle') == 0 && statBlock.data.initiativeMod != undefined || get_avtt_setting_value('statBlockStyle') == 2){
+    if(get_avtt_setting_value('statBlockStyle') == 0 && statBlock.data.initiativeBonus != null || get_avtt_setting_value('statBlockStyle') == 2){
       statblockData = `
           <div id="content" class="main content-container" style="padding:0!important">
             <section class="primary-content" role="main">
@@ -818,10 +840,10 @@ function build_monster_copy_stat_block(statBlock) {
                               <span class="mon-stat-block__attribute-label ddbc-creature-block__attribute-label">Initiative</span>
                               <span class="mon-stat-block__attribute-value">
                                 <span class="mon-stat-block__attribute-data-value">
-                                    ${statBlock.rollButton(`1d20`, statBlock.data.initiativeMod != undefined ? statBlock.data.initiativeMod : statBlock.dexModString, 'Roll', 'Initiative', parenthesis = true) }
+                                    ${statBlock.initiativeButton() }
                                 </span>
-                                ${statBlock.data.initiativeScore != undefined ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
-                                    ${statBlock.data.initiativeScore}
+                                ${statBlock.data.initiativeBonus != null ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
+                                    (${statBlock.data.initiativeBonus + 10})
                                 </span>` : ``}   
                               </span>        
                             </div>
@@ -1076,10 +1098,10 @@ function build_monster_copy_stat_block(statBlock) {
                           <span class="mon-stat-block__attribute-label ddbc-creature-block__attribute-label">Initiative</span>
                           <span class="mon-stat-block__attribute-value">
                             <span class="mon-stat-block__attribute-data-value">
-                                ${statBlock.rollButton(`1d20`, statBlock.data.initiativeMod != undefined ? statBlock.data.initiativeMod : statBlock.dexModString, 'Roll', 'Initiative', parenthesis = true) }
+                                ${statBlock.initiativeButton() }
                             </span>
-                            ${statBlock.data.initiativeScore != undefined ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
-                                ${statBlock.data.initiativeScore}
+                            ${statBlock.data.initiativeBonus != null ? `<span class="mon-stat-block__attribute-data-extra ddbc-creature-block__attribute-data-extra">
+                                ${statBlock.data.initiativeBonus + 10}
                             </span>` : ``}   
                           </span>        
                         </div>
@@ -1295,14 +1317,7 @@ function build_monster_copy_stat_block(statBlock) {
         `;
     }
 
-    let $stat = $(statblockData); //spell tooltip data is incorrect in 2024 monsters - grab from monster page until fixed in monster api for encounter tool/MAPS
-    if(statBlock.data.spellTooltips != undefined){
-      $stat.find('.spell-tooltip').each((index, tooltip) =>{
-        $(tooltip).attr('data-tooltip-href', $(statBlock.data.spellTooltips[index]).attr('data-tooltip-href'))
-        $(tooltip).attr('href', $(statBlock.data.spellTooltips[index]).attr('href'))
-      })
-    }
-    return $stat[0].outerHTML;
+    return statblockData;
 }
 class MonsterStatBlock {
     constructor(data) {
@@ -1402,6 +1417,18 @@ class MonsterStatBlock {
     get wisModString() { return this.modString(this.wis); }
     get chaModString() { return this.modString(this.cha); }
 
+    get initiativeModString() {
+      const init = this.data.initiativeBonus;
+      if (isNaN(init)) {
+        return 0; // not sure what to do here... send a number
+      }
+      if (init < 0) {
+        return `${init}`;
+      } else {
+        return `+${init}`;
+      }
+    }
+
     modInt(value) {
         if (isNaN(value)) {
             return 0; // not sure what to do here... send a number
@@ -1423,6 +1450,10 @@ class MonsterStatBlock {
       } else {
           return `+${value}`;
       }
+    }
+
+    initiativeButton(){
+      return this.rollButton(`1d20`, this.data.initiativeBonus != null ? this.initiativeModString : this.dexModString, 'Roll', 'Initiative', false)                   
     }
 
     statButton(value, stat, parenthesis = true) {
@@ -1734,13 +1765,10 @@ const fetch_tooltip = mydebounce(async (dataTooltipHref, name, callback) => {
     // dataTooltipHref will look something like this `//www.dndbeyond.com/spells/2329-tooltip?disable-webm=1&disable-webm=1`
     // we only want the `spells/2329` part of that
     try {
-        if (window.tooltipCache === undefined) {
-            window.tooltipCache = {};
-        }
-        console.log("fetch_tooltip starting for ", dataTooltipHref);
-        if(!dataTooltipHref.includes('tooltip')){
-          const parts = dataTooltipHref.split("/");
-          const id = dataTooltipHref.match(/#.*$/gi) ? parts[parts.length-1] : parseInt(parts[parts.length-1]);
+      const homebrewTooltip = async function(){
+        if(typeof dataTooltipHref[1] === 'string'){
+          const parts = dataTooltipHref[1].split("/");
+          const id = dataTooltipHref[1].match(/#.*$/gi) ? parts[parts.length-1] : parseInt(parts[parts.length-1]);
           const type = parts[parts.length-2];
 
           const typeAndId = `${type}/${id}`;
@@ -1751,16 +1779,19 @@ const fetch_tooltip = mydebounce(async (dataTooltipHref, name, callback) => {
               return;
           }
           window.tooltipCache[typeAndId] = {Tooltip: ``};
-          let moreInfoString = await DDBApi.fetchMoreInfo(dataTooltipHref);
+          let moreInfoString = await DDBApi.fetchMoreInfo(dataTooltipHref[1]);
           const parser = new DOMParser()
 
           // Parse the text
           let moreInfo = parser.parseFromString(moreInfoString, "text/html")
           let tooltipBody = $(moreInfo).find('.more-info');
           let bodyClass = $(moreInfo).find('body').attr('class');
-          let subClasses = !tooltipBody.length && dataTooltipHref.match(/#.*$/gi) ? ['p-article-a', 'p-article-content'] : ['more-info', 'detail-content']
-          if(!tooltipBody.length && dataTooltipHref.match(/#.*$/gi)){
-           tooltipBody = $('<div>').append($(moreInfo).find(dataTooltipHref.match(/#.*$/gi)[0]).nextUntil('.heading-anchor').addBack());
+          let subClasses = !tooltipBody.length && dataTooltipHref[1].match(/#.*$/gi) ? ['p-article-a', 'p-article-content'] : ['more-info', 'detail-content']
+          if(!tooltipBody.length && dataTooltipHref[1].match(/#.*$/gi)){
+          let section = $(moreInfo).find(dataTooltipHref[1].match(/#.*$/gi)[0]);
+          let sectionElementType = $(moreInfo).find(dataTooltipHref[1].match(/#.*$/gi)[0])[0].tagName
+
+           tooltipBody = $('<div>').append(section.nextUntil(`${sectionElementType}.heading-anchor`).addBack());
           }
           else if(!tooltipBody.length && $(moreInfo).find('.p-article-content').length>0){
             tooltipBody = $('<div>').append($(moreInfo).find('.p-article-content'));
@@ -1814,6 +1845,24 @@ const fetch_tooltip = mydebounce(async (dataTooltipHref, name, callback) => {
                         .detail-content>*{
                           width:100%;
                         }
+                        .more-info,.RPGMonster-listing .more-info,.RPGMagicItem-listing .more-info,.ihomebrewable-listing .more-info,.RPGSpell-listing .more-info,.IGear-listing .more-info,.RPGFeat-listing .more-info,.RPGBackground-listing .more-info,.RPGSubclass-listing .more-info {
+                            position: relative;
+                            top: -10px;
+                            background-color: #fff;
+                            border: none;
+                            width: calc(100% - 2px);
+                            margin: 0 auto;
+                            padding: 5px 5px 0
+                        }
+                        .more-info::after{
+                          display:none;
+                        }
+                        @media(min-width: 1024px) {
+                             .more-info,.RPGMonster-listing .more-info,.RPGMagicItem-listing .more-info,.ihomebrewable-listing .more-info,.RPGSpell-listing .more-info,.IGear-listing .more-info,.RPGFeat-listing .more-info,.RPGBackground-listing .more-info,.RPGSubclass-listing .more-info {
+                                width: calc(100% - 2px);
+                                padding: 5px 5px 0;
+                            }
+                        }
                       }
                   </style>
                   <div class='${subClasses[0]}'>
@@ -1827,56 +1876,125 @@ const fetch_tooltip = mydebounce(async (dataTooltipHref, name, callback) => {
 
           const toolTipJson = {Tooltip: moreInfo}
           window.tooltipCache[typeAndId] = toolTipJson;
-          callback(toolTipJson)
-          
-          
+          callback(toolTipJson); 
         }
-        else{
-          const parts = dataTooltipHref.split("/");
-          const idIndex = parts.findIndex(p => p.includes("-tooltip"));
-          const id = parseInt(parts[idIndex]);
-          const type = parts[idIndex - 1];
-          const typeAndId = `${type}/${id}`;
+      }
+      if (window.tooltipCache === undefined) {
+          window.tooltipCache = {};
+      }
 
-          const existingJson = window.tooltipCache[typeAndId];
-          if (existingJson !== undefined) {
-              console.log("fetch_tooltip existingJson", existingJson);
-              callback(existingJson);
+
+      console.log("fetch_tooltip starting for ", dataTooltipHref);
+
+      if(dataTooltipHref[0] != undefined){
+        const parts = dataTooltipHref[0].split("/");
+        const idIndex = parts.findIndex(p => p.includes("-tooltip"));
+        const id = parseInt(parts[idIndex]);
+        const type = parts[idIndex - 1];
+        const typeAndId = `${type}/${id}`;
+
+        const existingJson = window.tooltipCache[typeAndId];
+        if (existingJson !== undefined) {
+          console.log("fetch_tooltip existingJson", existingJson);
+          callback(existingJson);
+          return;
+        }
+        
+        window.ajaxQueue.addRequest({
+          url: `https://www.dndbeyond.com/${typeAndId}/tooltip-json`,
+          beforeSend: function() {
+            // only make the call if we don't have it cached.
+            // This prevents the scenario where a user triggers `mouseenter`, and `mouseleave` multiple times before the first network request finishes
+            const alreadyFetched = window.tooltipCache[typeAndId];
+            if (alreadyFetched) {
+                callback(alreadyFetched);
+                return false;
+            }
+            return true;
+          },
+          success: async function (response) {
+            console.log("fetch_tooltip success", response);
+
+            if(typeof response === 'string'){
+
+              homebrewTooltip()
               return;
-          }
+            }
 
-          
-            window.ajaxQueue.addRequest({
-                url: `https://www.dndbeyond.com/${typeAndId}/tooltip-json`,
-                beforeSend: function() {
-                    // only make the call if we don't have it cached.
-                    // This prevents the scenario where a user triggers `mouseenter`, and `mouseleave` multiple times before the first network request finishes
-                    const alreadyFetched = window.tooltipCache[typeAndId];
-                    if (alreadyFetched) {
-                        callback(alreadyFetched);
-                        return false;
-                    }
-                    return true;
-                },
-                success: function (response) {
-                    console.log("fetch_tooltip success", response);
-                    window.tooltipCache[typeAndId] = response;
-                    callback(response);
-                },
-                error: function (error) {
-                    console.warn("fetch_tooltip error", error);
-                }
-            });
-          
-        }
-        
-        
+            window.tooltipCache[typeAndId] = response;
+            callback(response);
+          },
+          error: function (error) {
+            console.warn("fetch_tooltip error - attmpting more info link for homebrew/sources", error);
+            homebrewTooltip()
+            return;
+          }
+        });
+      }  
+      else{
+        homebrewTooltip();
+      }
     } catch(error) {
         console.warn("Failed to find tooltip info in", dataTooltipHref, error);
     }
 }, 200);
 
-function display_tooltip(tooltipJson, container, clientY) {
+
+function add_tooltip_aoe_buttons(html, tokenId){
+  const icons = html.find(".aoe-size i:not('.above-vtt-visited')");
+  if (icons.length > 0) {
+    icons.wrap(function() {
+  
+      $(this).addClass("above-vtt-visited");
+      const button = $("<button class='above-aoe integrated-dice__container'></button>");
+
+      const spellContainer = $(this).closest('.tooltip-spell');
+      const name = spellContainer.find(".tooltip-header-title").first().text();
+      let color = "default"
+      const feet = /([\d]+) ft/gi.exec(spellContainer.find('.aoe-size').text())[1];
+      const dmgType = spellContainer.find(`[class*='-damage'] i[class*='i-type']`)?.attr('class')?.split('-')[2];
+      if (dmgType != undefined && dmgType != ''){
+        color = dmgType.toLowerCase();
+      }
+      let shape = $(this).attr('class').split(' ').filter(c => c.startsWith('i-aoe-'))[0].split('-')[2];
+      shape = window.sanitize_aoe_shape(shape)
+      button.attr("title", "Place area of effect token")
+      button.attr("data-shape", shape);
+      button.attr("data-style", color);
+      button.attr("data-size", feet);
+      button.attr("data-name", name);
+
+
+      button.css("border-width","1px");
+      button.click(function(e) {
+        e.stopPropagation();
+
+        let options = window.build_aoe_token_options(color, shape, feet / window.top.CURRENT_SCENE_DATA.fpsq, name)
+        if(name == 'Darkness' || name == 'Maddening Darkness' ){
+          options = {
+            ...options,
+            darkness: true
+          }
+        }
+        //if single token selected, place there:
+        if(window.CURRENTLY_SELECTED_TOKENS.length == 1) {
+          window.place_aoe_token_at_token(options, window.TOKEN_OBJECTS[window.top.CURRENTLY_SELECTED_TOKENS[0]]);
+        } 
+        else if(window.TOKEN_OBJECTS[tokenId] != undefined){
+          window.place_aoe_token_at_token(options, window.TOKEN_OBJECTS[tokenId]);
+        }
+        else {
+          window.place_aoe_token_in_centre(options)
+        }
+      })
+      
+      return button;
+    });
+    console.log(`${icons.length} aoe spells discovered`);
+  }  
+}
+
+function display_tooltip(tooltipJson, container, clientY, tokenId=undefined) {
     if (typeof tooltipJson?.Tooltip === "string") {
         remove_tooltip(0, false);
 
@@ -1887,7 +2005,9 @@ function display_tooltip(tooltipJson, container, clientY) {
             flyout.addClass("prevent-sidebar-modal-close"); // clicking inside the tooltip should not close the sidebar modal that opened it
             flyout.addClass("tooltip-flyout")
             const tooltipHtml = $(tooltipHtmlString);
-            add_journal_roll_buttons(tooltipHtml);
+            add_journal_roll_buttons(tooltipHtml, tokenId);
+            add_aoe_statblock_click(tooltipHtml, tokenId);
+            add_tooltip_aoe_buttons(tooltipHtml, tokenId);
             flyout.append(tooltipHtml);
             let sendToGamelogButton = $(`<a class="ddbeb-button" href="#">Send To Gamelog</a>`);
             sendToGamelogButton.css({ "float": "right" });
@@ -1947,34 +2067,89 @@ function remove_tooltip(delay = 0, removeHoverNote = true) {
     }
 }
 
-function add_stat_block_hover(statBlockContainer) {
+function add_stat_block_hover(statBlockContainer, tokenId) {
     const tooltip = $(statBlockContainer).find(".tooltip-hover");
+    
     tooltip.hover(function (hoverEvent) {
+
+        let currentTarget = $(hoverEvent.currentTarget);
+        let cursorOffset = {
+           left : 10,
+           top  : -10
+        }
+        currentTarget.off('mousemove.cursor').on('mousemove.cursor', function(e){
+          currentTarget.css({
+            '--cursor-offsetX': `${(e.clientX + cursorOffset.left)}px`,
+            '--cursor-offsetY': `${(e.clientY + cursorOffset.top)}px`
+          })
+        })
         if (hoverEvent.type === "mouseenter") {
-            let dataTooltipHref = $(hoverEvent.currentTarget).attr("data-moreinfo") ? $(hoverEvent.currentTarget).attr("data-moreinfo") : $(hoverEvent.currentTarget).attr("data-tooltip-href");
-            let name = $(hoverEvent.currentTarget).text()
+          window.tooltipHoverTimeout = setTimeout(function(){
+            currentTarget.css({
+              '--cursor-offsetX': `${(hoverEvent.clientX + cursorOffset.left)}px`,
+              '--cursor-offsetY': `${(hoverEvent.clientY + cursorOffset.top)}px`
+            })
+            let dataTooltipHref =[currentTarget.attr("data-tooltip-href"), currentTarget.attr("data-moreinfo")]; 
+            let name = currentTarget.text()
 
-            if (typeof dataTooltipHref === "string") {
-                fetch_tooltip(dataTooltipHref, name, function (tooltipJson) {
 
-                    let container = $(hoverEvent.target).closest(".sidebar-flyout");
-                    if(container.find('.tooltip-header').length === 0){
-                      container = $(hoverEvent.target).closest("#resizeDragMon");
-                    }
-                    if (container.length === 0) {
-                        container = $(hoverEvent.target).closest(".sidebar-modal");
-                    }
-                    if (container.length === 0) {
-                        container = is_characters_page() ? $(".ct-sidebar__inner [class*='styles_content']") : $(".sidebar__pane-content");
-                    }
 
-                    display_tooltip(tooltipJson, container, hoverEvent.clientY);
-                });
+            const callback = function (tooltipJson) {
+                currentTarget.toggleClass('loading-tooltip', false);
+                currentTarget.off('mousemove.cursor');
+                let container = currentTarget.closest(".sidebar-flyout");
+                if(container.find('.tooltip-header').length === 0){
+                  container = currentTarget.closest("#resizeDragMon");
+                }
+                if (container.length === 0) {
+                    container = currentTarget.closest(".sidebar-modal");
+                }
+                if (container.length === 0) {
+                    container = is_characters_page() ? $(".ct-sidebar__inner [class*='styles_content']") : $(".sidebar__pane-content");
+                }
+
+                display_tooltip(tooltipJson, container, hoverEvent.clientY, tokenId);   
+            };
+            if(window.tooltipCache == undefined)
+              window.tooltipCache = {};
+            if(dataTooltipHref[0] != undefined){
+              const parts = dataTooltipHref[0].split("/");
+              const idIndex = parts.findIndex(p => p.includes("-tooltip"));
+              const id = parseInt(parts[idIndex]);
+              const type = parts[idIndex - 1];
+              const typeAndId = `${type}/${id}`;
+
+              const existingJson = window.tooltipCache[typeAndId];
+              if (existingJson !== undefined) {
+                console.log("fetch_tooltip existingJson", existingJson);
+                callback(existingJson);
+                return;
+              }
             }
+            else if(dataTooltipHref[1] != undefined){              
+              const parts = dataTooltipHref[1].split("/");
+              const id = dataTooltipHref[1].match(/#.*$/gi) ? parts[parts.length-1] : parseInt(parts[parts.length-1]);
+              const type = parts[parts.length-2];
+
+              const typeAndId = `${type}/${id}`;
+              const existingJson = window.tooltipCache[typeAndId];
+              if (existingJson !== undefined) {
+                console.log("fetch_tooltip existingJson", existingJson);
+                callback(existingJson);
+                return;
+              }
+            }
+            currentTarget.toggleClass('loading-tooltip', true);   
+            fetch_tooltip(dataTooltipHref, name, callback);   
+          }, 200);
         } else {
+            clearTimeout(window.tooltipHoverTimeout); 
             remove_tooltip(500);
+            currentTarget.toggleClass('loading-tooltip', false);
+            currentTarget.off('mousemove.cursor');
         }
     });
+
 }
 
 function send_html_to_gamelog(outerHtml) {
