@@ -34,7 +34,7 @@ async function getOpen5e(results = [], search = ''){
     const monsterTypes = (monster_search_filters?.monsterTypes) ? monster_search_filters.monsterTypes.map(item=> item = ddbMonsterTypes[item]).toString() : '';
     
 
-    let api_url = `https://api.open5e.com/monsters/?slug__in=&slug__iexact=&slug=&name__iexact=&name=&cr=&cr__range=&cr__gt=${minCR}&cr__gte=&cr__lt=${maxCR}&cr__lte=&armor_class=&armor_class__range=&armor_class__gt=&armor_class__gte=&armor_class__lt=&armor_class__lte=&type__iexact=&type=&type__in=${monsterTypes}&type__icontains=&page_no=&page_no__range=&page_no__gt=&page_no__gte=&page_no__lt=&page_no__lte=&document__slug__iexact=&document__slug=&document__slug__in=&document__slug__not_in=&search=${search}`
+    let api_url = `https://api.open5e.com/monsters/?slug__in=&slug__iexact=&slug=&name__iexact=&name=&cr=&cr__range=&cr__gt=${minCR}&cr__gte=&cr__lt=${maxCR}&cr__lte=&armor_class=&armor_class__range=&armor_class__gt=&armor_class__gte=&armor_class__lt=&armor_class__lte=&type__iexact=&type=&type__in=${monsterTypes}&type__icontains=&page_no=&page_no__range=&page_no__gt=&page_no__gte=&page_no__lt=&page_no__lte=&document__slug__iexact=&document__slug=&document__slug__in=&document__slug__not_in=&name__icontains=${search}&limit=10`
     let jsonData = {}
     await $.getJSON(api_url, function(data){
         jsonData = data;
@@ -46,12 +46,12 @@ async function getOpen5e(results = [], search = ''){
     results = results.concat(jsonData.results)
     open5e_monsters = results;
     open5e_next = jsonData.next;
-    inject_open5e_monster_list_items(); 
+    inject_open5e_monster_list_items(open5e_monsters); 
 
     return open5e_monsters;
 }
 async function getGroupOpen5e(slugin){
-    let api_url = `https://api.open5e.com/monsters/?ordering=name&slug__in=${slugin}&slug__iexact=&slug=&name__iexact=&name=&cr=&cr__range=&cr__gt=&cr__gte=&cr__lt=&cr__lte=&armor_class=&armor_class__range=&armor_class__gt=&armor_class__gte=&armor_class__lt=&armor_class__lte=&type__iexact=&type=&type__in=&type__icontains=&page_no=&page_no__range=&page_no__gt=&page_no__gte=&page_no__lt=&page_no__lte=&document__slug__iexact=&document__slug=&document__slug__in=&document__slug__not_in=`
+    let api_url = `https://api.open5e.com/monsters/?ordering=name&slug__in=${slugin}&slug__iexact=&slug=&name__iexact=&name=&cr=&cr__range=&cr__gt=&cr__gte=&cr__lt=&cr__lte=&armor_class=&armor_class__range=&armor_class__gt=&armor_class__gte=&armor_class__lt=&armor_class__lte=&type__iexact=&type=&type__in=&type__icontains=&page_no=&page_no__range=&page_no__gt=&page_no__gte=&page_no__lt=&page_no__lte=&document__slug__iexact=&document__slug=&document__slug__in=&document__slug__not_in=&limit=10`
     let jsonData = {}
     await $.getJSON(api_url, function(data){
         jsonData = data;
@@ -271,14 +271,35 @@ function rebuild_token_items_list() {
     console.group("rebuild_token_items_list");
     try {
 
+    //bring old players folder data up to current structure to support players folders
+    const playersFolder = window.TOKEN_CUSTOMIZATIONS.find(tc=> tc.id == RootFolder.Players.id)
+    if(playersFolder !== undefined){
+        playersFolder.parentId = '_';
+        playersFolder.rootId = 'playersFolder';
+    }
 
     backfill_mytoken_folders(); // just in case we're missing any folders
 
     // Players
     let tokenItems = window.pcs
         .filter(pc => pc.sheet !== undefined && pc.sheet !== "")
-        .map(pc => SidebarListItem.PC(pc.sheet, pc.name, pc.image));
-
+        .map(pc => {
+            const playerCustomization = window.TOKEN_CUSTOMIZATIONS.find(tc => tc.id == pc.sheet);
+            //adjust old data structure
+            if([RootFolder.Monsters.id, RootFolder.MyTokens.id].includes(playerCustomization?.parentId))
+                playerCustomization.parentId = RootFolder.Players.id;
+            if([RootFolder.Monsters.id, RootFolder.MyTokens.id].includes(playerCustomization?.rootId))
+                playerCustomization.rootId = RootFolder.Players.id;
+            let folderPath = playerCustomization?.folderPath();
+            let parentId = playerCustomization?.parentId; 
+            return SidebarListItem.PC(pc.sheet, pc.name, pc.image, folderPath, parentId);
+        });
+    // Players Folders
+    window.TOKEN_CUSTOMIZATIONS
+        .filter(tc => tc.tokenType === ItemType.Folder && tc.fullPath().startsWith(RootFolder.Players.path))
+        .forEach(tc => {
+            tokenItems.push(SidebarListItem.Folder(tc.id, tc.folderPath(), tc.name(), tc.tokenOptions.collapsed, tc.parentId, ItemType.PC, tc.color))
+        })
     // My Tokens Folders
     window.TOKEN_CUSTOMIZATIONS
         .filter(tc => tc.tokenType === ItemType.Folder && tc.fullPath().startsWith(RootFolder.MyTokens.path))
@@ -346,7 +367,7 @@ function filter_token_list(searchTerm) {
 
     console.log("filter_token_list searchTerm", searchTerm)
     $('.custom-token-list').hide();
-    redraw_token_list(searchTerm);
+    redraw_token_list(searchTerm, true, true);
 
     if (searchTerm.length > 0) {
         let allFolders = tokensPanel.body.find(".folder");
@@ -557,7 +578,7 @@ function redraw_token_list_item(item){
  * @param searchTerm {string} the search term used to filter the list of tokens
  * @param enableDraggable {boolean} whether or not to make items draggable. Defaults to true
  */
-function redraw_token_list(searchTerm, enableDraggable = true) {
+function redraw_token_list(searchTerm, enableDraggable = true, leaveEmpty=false) {
     if (!window.DM) return;
     if (!window.tokenListItems) {
         // don't do anything on startup
@@ -610,8 +631,11 @@ function redraw_token_list(searchTerm, enableDraggable = true) {
 
     update_pc_token_rows();
     inject_encounter_monsters();
-    inject_monster_tokens(nameFilter);
-    inject_open5e_monster_list_items();
+    if(!leaveEmpty){
+        inject_monster_tokens(nameFilter);
+        inject_open5e_monster_list_items();
+    }
+
     if(!$('.reveal-hidden-button').hasClass('clicked')){
         $(".sidebar-panel-content").find(".sidebar-panel-body .hidden-sidebar-item").toggleClass("temporary-visible", false);
     }
@@ -1882,7 +1906,7 @@ function register_token_row_context_menu() {
 
             if (rowItem.canDelete()) {
 
-                if(!rowItem.isTypeFolder() && !rowItem.isTypeEncounter() && !rowItem.isTypePC())
+                if((!rowItem.isTypeFolder() && !rowItem.isTypeEncounter()))
                     menuItems["border"] = "---";
 
                 // not a built in folder or token, add an option to delete
@@ -1906,7 +1930,35 @@ function register_token_row_context_menu() {
         }
     });
 }
+/**
+ * Creates a "My Tokens" folder within another "My Tokens" folder
+ * @param listItem {SidebarListItem} The folder to create a new folder within
+ */
+function create_player_folder_inside(listItem) {
+    if (!listItem.isTypeFolder() || !listItem.fullPath().startsWith(RootFolder.Players.path)) {
+        console.warn("create_mytoken_folder_inside called with an incorrect item type", listItem);
+        return;
+    }
 
+    let newFolderName = "New Folder";
+    let newFolderCount = window.TOKEN_CUSTOMIZATIONS
+        .filter(tc => tc.tokenType === ItemType.Folder && tc.name().startsWith(newFolderName))
+        .length;
+    if (newFolderCount > 0) {
+        newFolderName += ` ${newFolderCount + 1}`;
+    }
+    let newFolder = TokenCustomization.Folder(uuid(), listItem.id, RootFolder.Players.id, { name: newFolderName });
+    persist_token_customization(newFolder, function(didSucceed, errorType) {
+        if (didSucceed) {
+                did_change_mytokens_items();
+                let newListItem = window.tokenListItems.find(li => li.type === ItemType.Folder && li.id === newFolder.id);
+                display_folder_configure_modal(newListItem);
+                expand_all_folders_up_to_item(newListItem);
+        } else {
+            showError(errorType, "create_mytoken_folder_inside failed to create a new folder");
+        }
+    });
+}
 /**
  * Creates a "My Tokens" folder within another "My Tokens" folder
  * @param listItem {SidebarListItem} The folder to create a new folder within
@@ -2013,7 +2065,7 @@ function create_token_inside(listItem, tokenName = "New Token", tokenImage = '',
         uuid(),
         listItem.id,
         { name: newTokenName,
-          alternativeImages: [tokenImage]
+          alternativeImages: tokenImage != '' ? [tokenImage] : []
         },
     );
 
@@ -2024,9 +2076,10 @@ function create_token_inside(listItem, tokenName = "New Token", tokenImage = '',
         customization.tokenOptions = {
             ...customization.tokenOptions,
             ...options,
-            alternativeImages: options.alternativeImages?.length > 0 ? options.alternativeImages : [options.imgsrc]
+            alternativeImages: options.alternativeImages?.length > 0 ? options.alternativeImages : options.imgsrc != '' ? [options.imgsrc] : []
         }
     }
+
     if(statBlock != undefined){
         window.JOURNAL.notes[customization.id] = {
             id: customization.id,
@@ -3241,7 +3294,6 @@ function inject_encounter_monsters() {
 /** A convenience function to be called after any "My Tokens" are updated */
 function did_change_mytokens_items() {
     rebuild_token_items_list();
-    redraw_token_list();
     filter_token_list($('[name="token-search"]').val() ? $('[name="token-search"]').val() : "");
 }
 
@@ -3791,7 +3843,7 @@ function display_change_image_modal(placedToken) {
 
     /// draw tokens in the body
     let listItem = list_item_from_token(placedToken);
-    let alternativeImages = [placedToken.options.imgsrc];
+    let alternativeImages = placedToken.options.imgsrc != '' ? [placedToken.options.imgsrc] : [];
     if (placedToken.options.alternativeImages) {
         alternativeImages = alternativeImages.concat(placedToken.options.alternativeImages);
     }
@@ -4543,7 +4595,7 @@ function getPersonailityTrait(){
         245: "Businesslike",
         246: "Busy",
         247: "Casual",
-        248: "Crebral",
+        248: "Cerebral",
         249: "Chummy",
         250: "Circumspect",
         251: "Competitive",

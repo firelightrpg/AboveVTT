@@ -411,13 +411,18 @@ button .ddbc-tab-options__header-heading .menu-option{
 
 
 
-.door.background{
+.door.background,
+.portal.background{
     border: 2px ridge #060606;
     height: 130%;
     width: 100%;
     position: absolute;
 }
-.door.foreground{
+
+
+.door.foreground,
+.curtain.foreground,
+.teleporter.foreground{
     background: #fff6;
     height: calc(130% - 2px);
     width: calc(100% - 2px);
@@ -429,6 +434,7 @@ button .ddbc-tab-options__header-heading .menu-option{
     transform: rotateY(0deg);
     transition: 200ms transform 0ms linear;
 }
+
 .door-icon{
     width: 15%;
     height: 33%;
@@ -436,7 +442,54 @@ button .ddbc-tab-options__header-heading .menu-option{
     top: 34%;
     left: 74%;  
 }
-.door-button:hover .door.foreground {
+.teleporter.background,
+.teleporter.foreground{
+    border:none;
+    border-radius: 50%;
+    background: linear-gradient(#fff6, #fff6);
+    box-shadow: 0px 0px 2px 0px #000;
+}
+.linked .teleporter.background,
+.linked .teleporter.foreground{
+    background: linear-gradient(#fff6, #fff6), radial-gradient(ellipse at center, #00F 20%, transparent);
+    box-shadow: 0px 0px 5px 0px #00F;
+}
+.linked:hover .teleporter.foreground{
+    background: linear-gradient(#fff6, #fff6), radial-gradient(ellipse at center, #00F 20%, transparent);
+    box-shadow: 0px 0px 5px 0px #00F, inset 0px 0px 5px 2px #7c98ff;
+}
+.curtain.foreground{
+  --s: 2.2px; /* control the wave*/
+  border:none !important;
+  color: #fff;
+  --_s: calc(var(--s)*4) 51% repeat-x;
+  --_r: calc(1.4*var(--s)) at left 50%;
+  --_g1: #000 99%,#0000 101%;
+  --_g2: #0000 99%,#000 101%;
+  --mask:
+    radial-gradient(var(--_r) top    calc(var(--s)* 1.9),var(--_g1)) 
+     calc(100% - 2*var(--s) - var(--_i,0px)) 0/var(--_s),
+    radial-gradient(var(--_r) top    calc(var(--s)*-0.9),var(--_g2)) 
+     calc(100% - var(--_i,0px)) var(--s)/var(--_s),
+    radial-gradient(var(--_r) bottom calc(var(--s)* 1.9),var(--_g1)) 
+     calc(-40% - 2*var(--s) + var(--_i,0px)) 100%/var(--_s),
+    radial-gradient(var(--_r) bottom calc(var(--s)*-0.9),var(--_g2)) 
+     calc(-40% + var(--_i,0px)) calc(100% - var(--s))/var(--_s);
+  -webkit-mask: var(--mask);
+          mask: var(--mask);
+  background: linear-gradient(to right, #eeeeeeaa 0% 20%, #aaa5a577 50%, #eeeeeeaa 60%, #33333377)
+}
+
+.door-button:hover .curtain.foreground{
+    background: linear-gradient(to right, #eeeeeeee 0% 20%, #aaa5a5aa 50%, #eeeeeeee 60%, #333333aa)
+}
+
+
+.door-button:hover .portal.foreground{
+    background: linear-gradient(#fffc, #fffc), radial-gradient(ellipse at center, #00F 20%, transparent) !important;
+}
+.door-button:hover .door.foreground,
+{
     background: #fff;
 }
 
@@ -460,6 +513,7 @@ button .ddbc-tab-options__header-heading .menu-option{
     transform: rotateY(57deg) skew(0deg, 16deg);
     transition: 200ms transform 0ms linear;
 }
+
 
 .door-button.locked .door-icon{
     content: "";
@@ -580,6 +634,10 @@ button .ddbc-tab-options__header-heading .menu-option{
     position: absolute;
     transition: 200ms transform 0ms linear;
 }
+.door-button.open .curtain.foreground{
+    transform: scale(0.5, 1);
+    transition: 200ms transform 0ms linear;
+}
 
 .door-button:not(.ignore-hover):not(.locked):hover .window.background>div{
     transform: translateY(7px);
@@ -596,6 +654,15 @@ button .ddbc-tab-options__header-heading .menu-option{
 }
 .door-button.open:not(.ignore-hover):hover .door.foreground{
     transform: rotateY(45deg) skew(0deg, 10deg);
+    transition: 50ms transform 100ms linear;
+}
+
+.door-button:not(.ignore-hover):not(.locked):hover .curtain.foreground{
+    transform: scale(0.8, 1);
+    transition: 50ms transform 100ms linear;
+}
+.door-button.open:not(.ignore-hover):hover .curtain.foreground{
+     transform: scale(0.7, 1);
     transition: 50ms transform 100ms linear;
 }
 
@@ -1016,7 +1083,9 @@ div#scene_selector,
     bottom: 0;
     position: absolute !important;
 }
-
+#edit_dialog{
+    overflow: auto;
+}
 #edit_dialog button:not(.rc-switch),
 #edit_scene_form button:not(.rc-switch){
     background:none;
@@ -3100,6 +3169,7 @@ button.roll-button-mod.minus {
     mix-blend-mode:lighten;
     opacity:1;
     background:#000;
+    filter: blur(3px);
 }
 .ruler-svg-text{
     fill: #000;
@@ -3147,10 +3217,7 @@ button.roll-button-mod.minus {
 }
 
 
-.aura-element-container-clip:not([data-animation])>.islight,
-.aura-element-container-clip>div:not(.islight){
-   filter: blur(calc(5px / var(--scene-scale)));
-}
+
 
 
 .remote-dice-video{
@@ -3733,10 +3800,10 @@ div#selectedTokensBorder {
 }
 @keyframes mymove {
     from{
-        --opacity: 0.2
+        --opacity: 0.4
     }
     to {
-        --opacity: 0.5
+        --opacity: 0.6
     }
   }
 .above-vtt-container-roll-output{
@@ -5269,9 +5336,13 @@ button.block-send-to-game-log span {
 #playersFolder .players-popout-button{
     position: absolute;
     top: 0px;
-    right: 30px;
+    left: 100px;
     margin-right: 5px;
     margin-top: 5px; 
+}
+#playersFolder .players-popout-button.subfolder-popout{
+    left:unset;
+    right:30px;
 }
 #playersFolder .hp-attribute.death-saves.ct-health-summary__data.ct-health-summary__deathsaves {
     float: right;
@@ -5345,9 +5416,31 @@ button.block-send-to-game-log span {
     bottom: 0;
     transform: scale(0.8);
 }
+#playersFolder .folder-item-list>.folder>.sidebar-list-item-row-item>.token-row-gear{
+    display: block;
+    width: 30px;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    background-color: rgb(242, 246, 248);
+    cursor: pointer;
+    min-width: 30px;
+    padding: 7px;
+    border-left: 1px solid rgb(216, 225, 232);
+    margin: -4px -4px -4px 2px;
+    height:auto;
+    border-radius: 0px;
+    padding: 7px;
+}
+#playersFolder .folder-item-list>.folder>.sidebar-list-item-row-item>.token-row-gear img{
+    transform:initial;
+    position:initial
+}
 #playersFolder .token-row-button .material-icons{
     font-size: 18px;
     padding: 0px;
+}
+#playersFolder>.sidebar-list-item-row-item:first-of-type>.token-row-button .material-icons {
+    font-size:25px;
 }
 #playersFolder .ddbc-box-background svg path{
     fill: var(--player-border-color, #F00);

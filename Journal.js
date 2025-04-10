@@ -107,18 +107,18 @@ class JournalManager{
 	persist(allowPlayerPersist=false){
 		if(window.DM || allowPlayerPersist){ 
 
-			let statBlocks = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock == true));
-			let chapters = this.chapters
-			let journal = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock != true));
+			const statBlocks = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock == true));
+			const chapters = this.chapters
+			const journal = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock != true));
 
 
-			let storeImage = gameIndexedDb.transaction([`journalData`], "readwrite")
-			let objectStore = storeImage.objectStore(`journalData`)
+			const storeImage = gameIndexedDb.transaction([`journalData`], "readwrite")
+			const objectStore = storeImage.objectStore(`journalData`)
 
-			let globalObjectStore = globalIndexedDB.transaction(["journalData"], "readwrite").objectStore(`journalData`)
+			const globalObjectStore = globalIndexedDB.transaction(["journalData"], "readwrite").objectStore(`journalData`)
 
 			if(window.DM){ // store your own statblocks as DM
-				let deleteRequest = globalObjectStore.delete(`JournalStatblocks`);
+				const deleteRequest = globalObjectStore.delete(`JournalStatblocks`);
 				deleteRequest.onsuccess = (event) => {
 				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks`, 'journalData': statBlocks});
 				};
@@ -127,7 +127,7 @@ class JournalManager{
 				};
 			}
 			else{ // store other DMs statblocks for use when DM isn't online; We keep these seperate so we don't override our own statblocks with another DMs statblock set.
-				let deleteRequest = globalObjectStore.delete(`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`);
+				const deleteRequest = globalObjectStore.delete(`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`);
 				deleteRequest.onsuccess = (event) => {
 				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`, 'journalData': statBlocks});
 				};
@@ -137,7 +137,7 @@ class JournalManager{
 			}
 
 
-			let journalDeleteRequest = objectStore.delete(`Journal`);
+			const journalDeleteRequest = objectStore.delete(`Journal`);
 			journalDeleteRequest.onsuccess = (event) => {
 			  const objectStoreRequest = objectStore.add({journalId: `Journal`, 'journalData': journal});
 			};
@@ -146,7 +146,7 @@ class JournalManager{
 			};
 
 	
-			let chapterDeleteRequest = objectStore.delete(`JournalChapters`);
+			const chapterDeleteRequest = objectStore.delete(`JournalChapters`);
 			chapterDeleteRequest.onsuccess = (event) => {
 			  const objectStoreRequest = objectStore.add({journalId: `JournalChapters`, 'journalData': chapters});
 			};
@@ -1074,14 +1074,14 @@ class JournalManager{
 		            	menuItems["copyLink"] = {
 			                name: "Copy Tooltip Link",
 			                callback: function(itemKey, opt, originalEvent) {
-			                	let copyLink = `[note]${note_id};${self.notes[note_id].title}[/note]`
+			                	const copyLink = `[note]${note_id};${self.notes[note_id].title}[/note]`
 			                    navigator.clipboard.writeText(copyLink);
 				            }   
 		            	};   
 		            	menuItems["copyEmbed"] = {
 			                name: "Copy Embed Tags",
 			                callback: function(itemKey, opt, originalEvent) {
-			                	let copyLink = `[note embed]${note_id};${self.notes[note_id].title}[/note]`
+			                	const copyLink = `[note embed]${note_id};${self.notes[note_id].title}[/note]`
 			                    navigator.clipboard.writeText(copyLink);
 				            }   
 		            	};
@@ -1572,6 +1572,7 @@ class JournalManager{
 				            	build_and_display_sidebar_flyout(e.clientY, function (flyout) {
 						            flyout.addClass("prevent-sidebar-modal-close"); // clicking inside the tooltip should not close the sidebar modal that opened it
 						            flyout.addClass('note-flyout');
+						            $(self).toggleClass('loading-tooltip', false);
 						            const tooltipHtml = $(noteHover);
 									window.JOURNAL.translateHtmlAndBlocks(tooltipHtml, noteId);	
 									add_journal_roll_buttons(tooltipHtml);
@@ -1768,7 +1769,7 @@ class JournalManager{
 
 
     translateHtmlAndBlocks(target, displayNoteId) {
-    	let pastedButtons = target.find('.avtt-roll-button, [data-rolltype="recharge"], .integrated-dice__container');
+    	let pastedButtons = target.find('.avtt-roll-button, [data-rolltype="recharge"], .integrated-dice__container, span[data-dicenotation]');
 
 		for(let i=0; i<pastedButtons.length; i++){
 			$(pastedButtons[i]).replaceWith($(pastedButtons[i]).text());
@@ -1829,45 +1830,7 @@ class JournalManager{
         lines = lines.map((line, li) => {
             let input = line;
 
-            input = input.replace(/&nbsp;/g,' ')
-
-            input = input.replace(/^((\s+?)?<(strong|em)>(<(strong|em)>)?([a-z0-9\s\.\(\)]+)(<\/(strong|em)>)?<\/(strong|em)>)/gi, '$6');
-
-            //bold top of statblock info
-            input = input.replace(/^(Senses|Gear|Skills|Damage Resistances|Resistances|Immunities|Damage Immunities|Damage Vulnerabilities|Condition Immunities|Languages|Proficiency Bonus|Saving Throws)/gi, `<strong>$1</strong>`)
-            input = input.replace(/^(Speed|Hit Points|HP|AC|Armor Class|Challenge|CR)(\s[\d\()])/gi, `<strong>$1</strong>$2`)
-            // Remove space between letter ranges
-            // e.g. a- b
-            input = input.replace(/([a-z])- ([a-z])/gi, '$1$2');
-            // Replace with right single quote
-            input = input.replace(/'/g, '’');
-            // e.g. Divine Touch. Melee Spell Attack:
-            input = input.replace(
-                /^(([a-z0-9]+[\s]?){1,7})(\([^\)]+\))?(\.)([\s]+)?((Melee|Ranged|Melee or Ranged) (Weapon Attack:|Spell Attack:|Attack Roll:))?/gi,
-                /(lair|legendary) actions/g.test(data)
-                    ? '<strong>$1$4</strong><em>$3$5$6</em>'
-                    : '<em><strong>$1$4</strong></em><em>$3$5$6</em>'
-            ).replace(/[\s]+\./gi, '.');
-
-            // Find actions requiring saving throws
-            input = input.replace(
-                /(?<!\])(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) Saving Throw:/gi,
-                '<em>$1 Saving Throw:</em>'
-            );
-            // Emphasize hit
-            input = input.replace(/Hit:/g, '<em>Hit:</em>');
-            // Emphasize hit or miss
-            input = input.replace(/Hit or Miss:/g, '<em>Hit or Miss:</em>');
-            // Emphasize trigger (2024 monsters)
-            input = input.replace(/Trigger:/g, '<em>Trigger:</em>');
-            // Emphasize response (2024 monsters)
-            input = input.replace(/Response:/g, '<em>Response:</em>');
-            // Emphasize failure/success (2024 monsters)
-            input = input.replace(/Failure:/g, '<em>Failure:</em>');
-            input = input.replace(/Success:/g, '<em>Success:</em>');
-            input = input.replace(/Success or Failure:/g, '<em>Success or Failure:</em>');
-            input = input.replace(/Failure or Success:/g, '<em>Failure or Success:</em>');
-  			
+            input = general_statblock_formating(input);
         
             // Find cover rules
             input = input.replace(

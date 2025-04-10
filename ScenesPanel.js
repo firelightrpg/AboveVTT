@@ -2344,10 +2344,9 @@ async function duplicate_scene(sceneId) {
 	
 	for(token in aboveSceneData.tokens){
 		let oldId = aboveSceneData.tokens[token].id;
-		if(is_player_id(oldId))
-			continue;
+
 		//is a door if it has oldSceneId, we want to keep the position part of the id but replace scene so it is still targeted correctly
-		let newId = oldId.includes(oldSceneId) ? oldId.replace(oldSceneId, newSceneId) : uuid();
+		let newId = is_player_id(oldId) ? oldId : oldId.includes(oldSceneId) ? oldId.replace(oldSceneId, newSceneId) : uuid();
 		
 		for(noteID in window.JOURNAL.notes){
 			if(oldId == noteID){	
@@ -2732,7 +2731,7 @@ function build_UVTT_import_container(){
 	const dropBoxbutton1 = createCustomDropboxChooser('Choose UVTT file from Dropbox', dropBoxOptions1);
 	const onedriveButton1 = createCustomOnedriveChooser('Choose UVTT file from Onedrive', function(links){$('#player_map_row input').val(links[0].link)}, 'single', ['.dd2vtt', '.uvtt', '.df2vtt'])
 	form.append(dropBoxbutton1);
-	form.append(onedriveButton1);
+	//form.append(onedriveButton1); if we ever get this working again, or one drive changes things to make them accessible we can reenable it
 
 	const hiddenDoorToggle = form_toggle('hidden_doors_toggle', null, false, function(event) {
 		handle_basic_form_toggle_click(event);
@@ -3145,10 +3144,10 @@ function build_tutorial_import_list_item(scene, logo, allowMagnific = true) {
 			.then(() => {
 				if(importData.notes != undefined){
 					for(let id in importData.notes){
-						window.JOURNAL.notes[id] = importData.notes[id];
+						window.JOURNAL.notes[id] = {...importData.notes[id]};
 					}
-					delete importData.notes;
 					window.JOURNAL.persist();
+					delete importData.notes;
 				}
 				window.ScenesHandler.scenes.push(importData);
 				did_update_scenes();

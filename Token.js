@@ -40,7 +40,7 @@ const availableToAoe = [
 
 
 
-const throttleLight = throttle((darknessMoved = false) => {requestAnimationFrame(()=>{redraw_light(darknessMoved)})}, 1000/8);
+const throttleLight = throttle((darknessMoved = false) => {requestAnimationFrame(()=>{redraw_light(darknessMoved)})}, 1000/30);
 const throttleTokenCheck = throttle(() => {requestAnimationFrame(()=>{do_check_token_visibility()})}, 1000/4);
 const debounceStoreExplored = mydebounce((exploredCanvas) => {		
 	let dataURI = exploredCanvas.toDataURL('image/jpg')
@@ -55,7 +55,7 @@ const debounceStoreExplored = mydebounce((exploredCanvas) => {
 	  const objectStoreRequest = objectStore.add({exploredId: `explore${window.gameId}${window.CURRENT_SCENE_DATA.id}`, 'exploredData': dataURI});
 	};
 }, 5000)
-let debounceLightChecks = mydebounce((darknessMoved = false) => {		
+var debounceLightChecks = mydebounce((darknessMoved = false) => {		
 		if(window.DRAGGING)
 			return;
 		if(window.walls?.length < 5){
@@ -67,11 +67,11 @@ let debounceLightChecks = mydebounce((darknessMoved = false) => {
 		
 }, 20);
 
-let debounceAudioChecks = mydebounce(() => {
+var debounceAudioChecks = mydebounce(() => {
 	checkAudioVolume();
 }, 20)
 
-let longDebounceLightChecks = mydebounce((darknessMoved = false) => {		
+var longDebounceLightChecks = mydebounce((darknessMoved = false) => {		
 		if(window.DRAGGING)
 			return;
 		if(window.walls?.length < 5){
@@ -292,7 +292,7 @@ class Token {
 			} else {
 				let tokenMultiplierAdjustment = (!window.CURRENT_SCENE_DATA.scaleAdjustment) ? 1 : (window.CURRENT_SCENE_DATA.scaleAdjustment.x > window.CURRENT_SCENE_DATA.scaleAdjustment.y) ? window.CURRENT_SCENE_DATA.scaleAdjustment.x : window.CURRENT_SCENE_DATA.scaleAdjustment.y;
 		
-				const calculatedFromSize = (parseFloat(this.options.size) / (parseFloat(window.CURRENT_SCENE_DATA.hpps) * tokenMultiplierAdjustment));
+				const calculatedFromSize = (parseFloat(this.options.size) / (parseInt(window.CURRENT_SCENE_DATA.hpps) * tokenMultiplierAdjustment));
 				if (!isNaN(calculatedFromSize)) {
 					output = calculatedFromSize;
 				}
@@ -316,7 +316,7 @@ class Token {
 			} else {
 				let tokenMultiplierAdjustment = (!window.CURRENT_SCENE_DATA.scaleAdjustment) ? 1 : (window.CURRENT_SCENE_DATA.scaleAdjustment.x > window.CURRENT_SCENE_DATA.scaleAdjustment.y) ? window.CURRENT_SCENE_DATA.scaleAdjustment.x : window.CURRENT_SCENE_DATA.scaleAdjustment.y;
 		
-				const calculatedFromSize = (parseFloat(this.options.size) / (parseFloat(window.CURRENT_SCENE_DATA.vpps)*tokenMultiplierAdjustment));
+				const calculatedFromSize = (parseFloat(this.options.size) / (parseInt(window.CURRENT_SCENE_DATA.vpps)*tokenMultiplierAdjustment));
 				if (!isNaN(calculatedFromSize)) {
 					output = calculatedFromSize;
 				}
@@ -2048,6 +2048,9 @@ class Token {
 			let old = $("#tokens").find(selector);
 			let self = this;
 
+			if(old.hasClass('pause_click'))//we're currently or just dragged this token ignore this place
+				return;
+
 			/* UPDATE COMBAT TRACKER */
 			this.update_combat_tracker()
 			const underdarknessDivisor = this.options.underDarkness && !this.options.exampleToken ? parseInt(window.CURRENT_SCENE_DATA.scale_factor) : 1;
@@ -2070,7 +2073,6 @@ class Token {
 			}		
 
 			if (old.length > 0) {
-
 				console.trace();
 				console.group("old token")
 				console.log("trovato!!");
@@ -2079,6 +2081,9 @@ class Token {
 					setTokenLight(old, this.options);
 					redraw_light();
 					door_note_icon(this.options.id);
+					if(this.options.teleporterCoords != undefined){
+						old.toggleClass('linked', true);
+					}
 					return;
 				}
 				if(window.CURRENT_SCENE_DATA.disableSceneVision == 1 && !window.DM)
@@ -2879,7 +2884,7 @@ class Token {
 							
 							
 							self.place_sync_persist();
-
+							let darknessMoved = self.options.darkness;
 							if (self.selected ) {
 								for (let tok of window.dragSelectedTokens){
 									let id = $(tok).attr("data-id");
@@ -2888,6 +2893,8 @@ class Token {
 									let curr = window.TOKEN_OBJECTS[id];
 									let ev = { target: $("#tokens [data-id='" + id + "']").get(0) };
 									curr.place_sync_persist();
+									if(curr.options.darkness === true)
+										darknessMoved = true;
 								}												
 							}
 							//remove cover for smooth drag
@@ -2904,8 +2911,9 @@ class Token {
 							if (get_avtt_setting_value("allowTokenMeasurement")){
 								WaypointManager.fadeoutMeasuring(window.PLAYER_ID)
 							}	
-
-							debounceLightChecks();
+							if(darknessMoved === true)
+								redraw_drawn_light();	
+							redraw_light(darknessMoved);
 
 							window.DRAGGING = false;
 							draw_selected_token_bounding_box();
@@ -4020,7 +4028,7 @@ function setTokenAudio(tokenOnMap, token){
 function checkAudioVolume(){
 	let audioTokens = $('.audio-token');
 	let tokensToCheck = [];
-	if(window.TokenAudioLevels == undefined){
+	if(window.TokenAudioLevels === undefined){
 		window.TokenAudioLevels ={}
 	}
 	
@@ -4047,8 +4055,8 @@ function checkAudioVolume(){
 
 
 		let currAudioPosition ={
-			x: parseInt(currAudioToken.options.left.replace('px', '')) + currAudioToken.sizeWidth()/2,
-			y: parseInt(currAudioToken.options.top.replace('px', '')) + currAudioToken.sizeHeight()/2
+			x: parseInt(currAudioToken.options.left) + currAudioToken.sizeWidth()/2,
+			y: parseInt(currAudioToken.options.top) + currAudioToken.sizeHeight()/2
 		}
 		for(let checkedTokenId in tokensToCheck){
 			let checkedToken = window.TOKEN_OBJECTS[tokensToCheck[checkedTokenId]];	
@@ -4067,8 +4075,8 @@ function checkAudioVolume(){
 			}
 
 			let checkedTokenPosition ={
-				x: parseInt(checkedToken.options.left.replace('px', '')) + checkedToken.sizeWidth()/2,
-				y: parseInt(checkedToken.options.top.replace('px', '')) + checkedToken.sizeHeight()/2
+				x: parseInt(checkedToken.options.left) + checkedToken.sizeWidth()/2,
+				y: parseInt(checkedToken.options.top) + checkedToken.sizeHeight()/2
 			}
 
 
@@ -5051,7 +5059,7 @@ function paste_selected_tokens(x, y) {
 		if (id in window.JOURNAL.notes) {
 			window.JOURNAL.notes[newId] = structuredClone(window.JOURNAL.notes[id]);
 			let copiedNote = window.JOURNAL.notes[newId];
-			copiedNote.title = window.TOKEN_OBJECTS[id].options.name;
+			copiedNote.title = window.all_token_objects[id].options.name;
 			window.JOURNAL.persist();
 			window.MB.sendMessage('custom/myVTT/note',{
 				id: newId,

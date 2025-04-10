@@ -164,6 +164,7 @@ function token_context_menu_expanded(tokenIds, e) {
 		$("#tokenOptionsContainer .sp-container").spectrum("destroy");
 		$("#tokenOptionsContainer .sp-container").remove();
 		$(`.context-menu-flyout`).remove(); 
+		clear_temp_canvas();
 	});
 
 	tokenOptionsClickCloseDiv.off("contextmenu").on("contextmenu", function(e){
@@ -181,7 +182,10 @@ function token_context_menu_expanded(tokenIds, e) {
 
 
 	if(door?.length == 1){
+
 		if(window.DM) {
+			const isTeleporter = door.find('.teleporter').length>0;
+			
 			if(window.TOKEN_OBJECTS[tokenIds] == undefined){
 				let options = {
 					...default_options(),
@@ -199,54 +203,251 @@ function token_context_menu_expanded(tokenIds, e) {
 				};
 				window.ScenesHandler.create_update_token(options)
 			}
-			let openButton = $(`<button class=" context-menu-icon-hidden door-open material-icons">Open/Close</button>`)
-			openButton.off().on("click", function(clickEvent){
-				let clickedItem = $(this);
-				let locked = door.hasClass('locked');
-				let secret = door.hasClass('secret');
+			if(!isTeleporter){
+				let openButton = $(`<button class=" context-menu-icon-hidden door-open material-icons">Open/Close</button>`)
+				openButton.off().on("click", function(clickEvent){
+					let clickedItem = $(this);
+					let locked = door.hasClass('locked');
+					let secret = door.hasClass('secret');
 
-				const type = isDoor ? (secret ? (locked ? 5 : 4) : (locked ? 2 : 0)) : (secret ? (locked ? 7 : 6) : (locked ? 3 : 1))
-		
-				let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
-            
-            	let opened = (/rgba.*0\.5\)/g).test(doors[0][2]) ? true : false;
-				isOpen = opened ? 'closed' : 'open';
+					const type = isDoor ? (secret ? (locked ? 5 : 4) : (locked ? 2 : 0)) : (secret ? (locked ? 7 : 6) : (locked ? 3 : 1))
+			
+					let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
+	            
+	            	let opened = (/rgba.*0\.5\)/g).test(doors[0][2]) ? true : false;
+					isOpen = opened ? 'closed' : 'open';
 
-				door.toggleClass('open', !opened);
+					door.toggleClass('open', !opened);
 
-        		window.DRAWINGS = window.DRAWINGS.filter(d => d != doors[0]);
-                let data = ['line',
-							 'wall',
-							 doorColors[type][isOpen],
-							 x1,
-							 y1,
-							 x2,
-							 y2,
-							 12,
-							 doors[0][8],
-							 doors[0][9],
-				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
-				 			 (doors[0][11] != undefined ? doors[0][11] : "")
-				];	
-				window.DRAWINGS.push(data);
-				window.wallUndo.push({
-					undo: [data],
-					redo: [doors[0]]
-				})
-
-
-				redraw_light_walls();
-				redraw_drawn_light();
-				redraw_light();
+	        		window.DRAWINGS = window.DRAWINGS.filter(d => d != doors[0]);
+	                let data = ['line',
+								 'wall',
+								 doorColors[type][isOpen],
+								 x1,
+								 y1,
+								 x2,
+								 y2,
+								 12,
+								 doors[0][8],
+								 doors[0][9],
+					 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+					 			 (doors[0][11] != undefined ? doors[0][11] : "")
+					];	
+					window.DRAWINGS.push(data);
+					window.wallUndo.push({
+						undo: [data],
+						redo: [doors[0]]
+					})
 
 
-				sync_drawings();
-				if(window.TOKEN_OBJECTS[`${x1}${y1}${x2}${y2}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','')]  != undefined){
-					window.TOKEN_OBJECTS[`${x1}${y1}${x2}${y2}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','')].place_sync_persist();
+					redraw_light_walls();
+					redraw_drawn_light();
+					redraw_light();
+
+
+					sync_drawings();
+					if(window.TOKEN_OBJECTS[`${x1}${y1}${x2}${y2}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','')]  != undefined){
+						window.TOKEN_OBJECTS[`${x1}${y1}${x2}${y2}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','')].place_sync_persist();
+					}
+				});
+				
+				body.append(openButton);
+			}
+			
+			if(isTeleporter){
+
+				if(window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords != undefined){
+					let scale = window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated : 1/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated ;
+					let teleScale = window.CURRENT_SCENE_DATA.scale_factor != undefined && window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords != undefined ? window.CURRENT_SCENE_DATA.scale_factor/window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords.scale : window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords != undefined  ? 1/window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords.scale : 1;
+				
+					let canvas = document.getElementById("temp_overlay");
+					let context = canvas.getContext("2d");
+					let brushpoints = [];
+					let [originX, originY] = [(parseInt(window.TOKEN_OBJECTS[tokenIds].options.left)+25)*scale, (parseInt(window.TOKEN_OBJECTS[tokenIds].options.top)+25)*scale]
+					let [endX, endY] = [window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords.left*teleScale, window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords.top*teleScale]
+
+					let [rectX, rectY] = [endX - window.CURRENT_SCENE_DATA.hpps/2, endY-window.CURRENT_SCENE_DATA.vpps/2]
+					context.setLineDash([30, 30])
+					drawRect(context, rectX, rectY, window.CURRENT_SCENE_DATA.hpps, window.CURRENT_SCENE_DATA.vpps, '#fff', false)
+
+
+
+					endX = endX - (endX-originX)*0.03;
+					endY = endY - (endY-originY)*0.03;
+					brushpoints.push({x:originX, y:originY}); // 4 points so arrow head works
+					brushpoints.push({x:originX, y:originY});
+					brushpoints.push({x:originX, y:originY});
+					brushpoints.push({x:originX, y:originY});
+					// draw a dot
+					brushpoints.push({x:endX, y:endY});
+					
+
+					drawBrushArrow(context, brushpoints,'#fff',6, undefined, 'dash');
+					context.setLineDash([])
 				}
-			});
+				let teleportLocButton = $(`<button class=" context-menu-icon-hidden door-open material-icons">Set One-way Teleporter Location</button>`)
+				teleportLocButton.off().on("click", function(clickEvent){
+					let scale = window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated : 1/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated ;
+					
+					$('#tokenOptionsClickCloseDiv').click();
+					let target = $("#temp_overlay, #fog_overlay, #VTT, #black_layer");	
+					$("#temp_overlay").css('z-index', '50');
+					let canvas = document.getElementById("temp_overlay");
+					let context = canvas.getContext("2d");
+					target.css('cursor', 'crosshair');
+					target.off('mousemove.drawTele').on('mousemove.drawTele', function(e){
+						clear_temp_canvas();
+						let brushpoints = [];
+						let [originX, originY] = [(parseInt(window.TOKEN_OBJECTS[tokenIds].options.left)+25)*scale, (parseInt(window.TOKEN_OBJECTS[tokenIds].options.top)+25)*scale]
+						let [endX, endY] = get_event_cursor_position(e);
 
-			body.append(openButton);
+						let [rectX, rectY] = [endX - window.CURRENT_SCENE_DATA.hpps/2, endY-window.CURRENT_SCENE_DATA.vpps/2]
+						context.setLineDash([30, 30])
+						drawRect(context, rectX, rectY, window.CURRENT_SCENE_DATA.hpps, window.CURRENT_SCENE_DATA.vpps, '#fff', false)
+
+
+
+						endX = endX - (endX-originX)*0.03;
+						endY = endY - (endY-originY)*0.03;
+						brushpoints.push({x:originX, y:originY}); // 4 points so arrow head works
+						brushpoints.push({x:originX, y:originY});
+						brushpoints.push({x:originX, y:originY});
+						brushpoints.push({x:originX, y:originY});
+						// draw a dot
+						brushpoints.push({x:endX, y:endY});
+						
+
+						drawBrushArrow(context, brushpoints,'#fff',6, undefined, 'dash');
+						context.setLineDash([])
+						
+					});
+					target.off('mouseup.setTele touchend.setTele').on('mouseup.setTele touchend.setTele', function(e){
+						if ( e.button == 2) {
+							return;
+						}
+						const [mouseX, mouseY] = get_event_cursor_position(e);
+						window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords = {'left': mouseX, 'top': mouseY, 'scale': window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor : 1}
+						if(window.all_token_objects[tokenIds] != undefined){
+							window.all_token_objects[tokenIds].options.teleporterCoords = {'left': mouseX, 'top': mouseY, 'scale': window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor : 1}
+						}
+						window.TOKEN_OBJECTS[tokenIds].place(0);
+						window.TOKEN_OBJECTS[tokenIds].sync($.extend(true, {}, window.TOKEN_OBJECTS[tokenIds].options));
+
+						clear_temp_canvas();
+						target.off('mouseup.setTele touchend.setTele');
+						target.off('mousemove.drawTele')
+						$("#temp_overlay").css('z-index', '25');
+					});
+				});
+				
+				body.append(teleportLocButton);
+
+				let teleportTwoWayButton = $(`<button class=" context-menu-icon-hidden door-open material-icons">Set Return Teleporter Location</button>`)
+				teleportTwoWayButton.off().on("click", function(clickEvent){
+					let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
+
+					let scale = window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated : 1/window.TOKEN_OBJECTS[tokenIds].options.scaleCreated ;
+					
+					$('#tokenOptionsClickCloseDiv').click();
+					let target = $("#temp_overlay, #fog_overlay, #VTT, #black_layer");	
+					$("#temp_overlay").css('z-index', '50');
+					let canvas = document.getElementById("temp_overlay");
+					let context = canvas.getContext("2d");
+					target.css('cursor', 'crosshair');
+					target.off('mousemove.drawTele').on('mousemove.drawTele', function(e){
+						clear_temp_canvas();
+						let brushpoints = [];
+						let [originX, originY] = [(parseInt(window.TOKEN_OBJECTS[tokenIds].options.left)+25)*scale, (parseInt(window.TOKEN_OBJECTS[tokenIds].options.top)+25)*scale]
+						let [endX, endY] = get_event_cursor_position(e);
+
+						let [rectX, rectY] = [endX - window.CURRENT_SCENE_DATA.hpps/2, endY-window.CURRENT_SCENE_DATA.vpps/2]
+						context.setLineDash([30, 30])
+						drawRect(context, rectX, rectY, window.CURRENT_SCENE_DATA.hpps, window.CURRENT_SCENE_DATA.vpps, '#fff', false)
+
+
+
+						endX = endX - (endX-originX)*0.03;
+						endY = endY - (endY-originY)*0.03;
+						brushpoints.push({x:originX, y:originY}); // 4 points so arrow head works
+						brushpoints.push({x:originX, y:originY});
+						brushpoints.push({x:originX, y:originY});
+						brushpoints.push({x:originX, y:originY});
+						// draw a dot
+						brushpoints.push({x:endX, y:endY});
+						
+
+						drawBrushArrow(context, brushpoints,'#fff',6, undefined, 'dash');
+						context.setLineDash([])
+						
+					});
+					target.off('mouseup.setTele touchend.setTele').on('mouseup.setTele touchend.setTele', function(e){
+						if ( e.button == 2) {
+							return;
+						}
+
+						const [mouseX, mouseY] = get_event_cursor_position(e);
+						const [originX, originY] = [(parseInt(window.TOKEN_OBJECTS[tokenIds].options.left)+25)*scale, (parseInt(window.TOKEN_OBJECTS[tokenIds].options.top)+25)*scale]
+						
+						let data = ['line',
+								 'wall',
+								 doors[0][2],
+								 mouseX-5,
+								 mouseY,
+								 mouseX+5,
+								 mouseY,
+								 12,
+								 doors[0][8],
+								 doors[0][9],
+					 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+					 			 (doors[0][11] != undefined ? doors[0][11] : "")
+					 	]
+					 	window.DRAWINGS.push(data);
+					 	window.wallUndo.push({
+							undo: [[...data]],
+						})
+						let clonePortalId = `${mouseX-5}${mouseY}${mouseX+5}${mouseY}${window.CURRENT_SCENE_DATA.id}`.replaceAll('.','') 
+			
+			 			if(window.TOKEN_OBJECTS[clonePortalId] == undefined){
+							let options = {
+								...default_options(),
+								left: `${mouseX-25}px`,
+								top: `${mouseY-25}px`,
+								id: clonePortalId,
+								vision:{
+									feet: 0,
+									color: `rgba(0, 0, 0, 0)`
+								},
+								imgsrc: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`,
+								type: 'door',
+								size: 50,
+								scaleCreated: window.CURRENT_SCENE_DATA.scale_factor,
+								teleporterCoords: {
+									'left': originX,
+									'top': originY,
+									'scale': window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor : 1
+								}
+							};
+							window.ScenesHandler.create_update_token(options)
+						}
+						redraw_light_walls();
+						sync_drawings();
+						window.TOKEN_OBJECTS[tokenIds].options.teleporterCoords = {'left': mouseX, 'top': mouseY, 'scale': window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor : 1}
+						if(window.all_token_objects[tokenIds] != undefined){
+							window.all_token_objects[tokenIds].options.teleporterCoords = {'left': mouseX, 'top': mouseY, 'scale': window.CURRENT_SCENE_DATA.scale_factor != undefined ? window.CURRENT_SCENE_DATA.scale_factor : 1}
+						}
+						window.TOKEN_OBJECTS[tokenIds].place(0);
+						window.TOKEN_OBJECTS[tokenIds].sync($.extend(true, {}, window.TOKEN_OBJECTS[tokenIds].options));
+
+						clear_temp_canvas();
+						target.off('mouseup.setTele touchend.setTele');
+						target.off('mousemove.drawTele')
+						$("#temp_overlay").css('z-index', '25');
+					});
+				});
+				body.append(teleportTwoWayButton);
+			}
+
+
 
 			let notesRow = $(`<div class="token-image-modal-footer-select-wrapper flyout-from-menu-item"><div class="token-image-modal-footer-title">Note</div></div>`);
 			notesRow.hover(function (hoverEvent) {
@@ -277,6 +478,8 @@ function token_context_menu_expanded(tokenIds, e) {
             let secret = door.hasClass('secret');
 
             let isDoor = door.children('.door').length>0;
+            let isWindow = door.children('.window').length>0;
+            let isCurtain = door.children('.curtain').length>0;
 
             let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
             let color = doors[0][2];
@@ -287,48 +490,50 @@ function token_context_menu_expanded(tokenIds, e) {
             body.append($('<div class="token-image-modal-footer-title" style="margin-top:10px">Door Type</div>'));
 
 
+            if(!isTeleporter){
+            	let lockedButton = $(`<button class="${door.hasClass('locked') ? 'single-active active-condition' : 'none-active'} context-menu-icon-hidden door-lock material-icons">Locked</button>`)
+				lockedButton.off().on("click", function(clickEvent){
+					let clickedItem = $(this);
+					let locked = door.hasClass('locked');
+					let secret = door.hasClass('secret');
 
-			let lockedButton = $(`<button class="${door.hasClass('locked') ? 'single-active active-condition' : 'none-active'} context-menu-icon-hidden door-lock material-icons">Locked</button>`)
-			lockedButton.off().on("click", function(clickEvent){
-				let clickedItem = $(this);
-				let locked = door.hasClass('locked');
-				let secret = door.hasClass('secret');
-
-				const type = isDoor ? (secret ? (!locked ? 5 : 4) : (!locked ? 2 : 0)) : (secret ? (!locked ? 7 : 6) : (!locked ? 3 : 1))
-
-				door.toggleClass('locked', !locked);
-				let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
-            
-        		window.DRAWINGS = window.DRAWINGS.filter(d => d != doors[0]);
-                let data = ['line',
-							 'wall',
-							 doorColors[type][isOpen],
-							 x1,
-							 y1,
-							 x2,
-							 y2,
-							 12,
-							 doors[0][8],
-							 doors[0][9],
-				 			 (doors[0][10] != undefined ? doors[0][10] : ""),
-				 			 (doors[0][11] != undefined ? doors[0][11] : "")
-				];	
-				window.DRAWINGS.push(data);
-				window.wallUndo.push({
-					undo: [data],
-					redo: [doors[0]]
-				})
-				redraw_light_walls();
-				redraw_light();
+					const type = isDoor ? (secret ? (!locked ? 5 : 4) : (!locked ? 2 : 0)) : isWindow ? (secret ? (!locked ? 7 : 6) : (!locked ? 3 : 1)) : isCurtain ? (secret ? (!locked ? 11 : 10) : (!locked ? 9 : 8)) : 12
+						
+					door.toggleClass('locked', !locked);
+					let doors = window.DRAWINGS.filter(d => (d[1] == "wall" && doorColorsArray.includes(d[2]) && parseInt(d[3]) == x1 && parseInt(d[4]) == y1 && parseInt(d[5]) == x2 && parseInt(d[6]) == y2))  
+	            
+	        		window.DRAWINGS = window.DRAWINGS.filter(d => d != doors[0]);
+	                let data = ['line',
+								 'wall',
+								 doorColors[type][isOpen],
+								 x1,
+								 y1,
+								 x2,
+								 y2,
+								 12,
+								 doors[0][8],
+								 doors[0][9],
+					 			 (doors[0][10] != undefined ? doors[0][10] : ""),
+					 			 (doors[0][11] != undefined ? doors[0][11] : "")
+					];	
+					window.DRAWINGS.push(data);
+					window.wallUndo.push({
+						undo: [data],
+						redo: [doors[0]]
+					})
+					redraw_light_walls();
+					redraw_light();
 
 
-				sync_drawings();
+					sync_drawings();
 
-				clickedItem.removeClass("single-active all-active some-active active-condition");
+					clickedItem.removeClass("single-active all-active some-active active-condition");
 
-				clickedItem.addClass(`${!locked ? 'single-active active-condition' : ''}`);
-			});
-			body.append(lockedButton);
+					clickedItem.addClass(`${!locked ? 'single-active active-condition' : ''}`);
+				});
+				body.append(lockedButton);
+            }
+			
 		
 			
 			let secretButton = $(`<button class="${door.hasClass('secret') ? 'single-active active-condition' : 'none-active'} context-menu-icon-hidden door-secret material-icons">Secret</button>`)
@@ -337,8 +542,8 @@ function token_context_menu_expanded(tokenIds, e) {
 				let locked = door.hasClass('locked');
 				let secret = door.hasClass('secret');
 
-				const type = isDoor ? (!secret ? (locked ? 5 : 4) : (locked ? 2 : 0)) : (locked ? (!secret ? 7 : 3) : (!secret ?  6 : 1)) 
-
+				const type = isDoor ? (!secret ? (locked ? 5 : 4) : (locked ? 2 : 0)) : isWindow ? (!secret ? (locked ? 7 : 6) : (locked ? 3 : 1)) : isCurtain ? (!secret ? (locked ? 11 : 10) : (locked ? 9 : 8)) : !secret ? 13 : 12
+				
 				isOpen = locked ? 'closed' : isOpen;
 
 				door.toggleClass('secret', !secret);
@@ -374,6 +579,7 @@ function token_context_menu_expanded(tokenIds, e) {
 				clickedItem.addClass(`${!secret ? 'single-active active-condition' : ''}`);
 			});
 			body.append(secretButton);
+
 			let hideButton = $(`<button class="${door.attr('data-hidden') == 'true' ? 'single-active active-condition' : 'none-active'} context-menu-icon-hidden door-hidden material-icons">Hide Icon-Show Walls to View</button>`)
 			hideButton.off().on("click", function(clickEvent){
 				let clickedItem = $(this);
