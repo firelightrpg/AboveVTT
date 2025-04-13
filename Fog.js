@@ -113,6 +113,8 @@ function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
 function getSceneMapSize() {
 	if(window.sceneMapSize === undefined || window.sceneMapSize.id !== window.CURRENT_SCENE_DATA.id){
 		const sceneMap = document.getElementById("scene_map");
+		if(sceneMap === null)
+			return {id: window.CURRENT_SCENE_DATA?.id, sceneHeight: 0, sceneWidth: 0 }
 		window.sceneMapSize = { id: window.CURRENT_SCENE_DATA.id, sceneHeight: Math.floor(sceneMap.offsetHeight), sceneWidth: Math.floor(sceneMap.offsetWidth) }
 	}
 
@@ -732,7 +734,7 @@ function check_single_token_visibility(id){
 	else
 		playerHasTruesight = false
 
-	if((playerTokenId === undefined && (window.walls.length > 4 || window.CURRENT_SCENE_DATA.darkness_filter > 0)) || window.TOKEN_OBJECTS[playerTokenId].options.auraislight === true)
+	if((playerTokenId === undefined && (window.walls.length > 4 || window.CURRENT_SCENE_DATA.darkness_filter > 0)) || (playerTokenId !== undefined && window.TOKEN_OBJECTS[playerTokenId].options.auraislight === true))
 		playerTokenHasVision = true
 	else
 		playerTokenHasVision = false;
@@ -742,7 +744,7 @@ function check_single_token_visibility(id){
 	
 	const inFog = playerTokenId !== id && is_token_under_fog(id, fogContext); // this token is in fog
 	
-	const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision !== 1 && playerTokenHasVision === true && is_token_in_raycasting_context(id) === false) || (window.CURRENT_SCENE_DATA.disableSceneVision !== 1 && playerTokenHasVision && is_token_under_light_aura(id) === false )); // this token is not in light, the player is using vision/light and darkness > 0
+	const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision != 1 && playerTokenHasVision === true && is_token_in_raycasting_context(id) === false) || (window.CURRENT_SCENE_DATA.disableSceneVision != 1 && playerTokenHasVision && is_token_under_light_aura(id) === false )); // this token is not in light, the player is using vision/light and darkness > 0
 	
 	const dmSelected = window.DM === true && $(tokenSelector).hasClass('tokenselected');
 
@@ -819,7 +821,7 @@ function do_check_token_visibility() {
 	else
 		playerHasTruesight = false
 
-	if((playerTokenId === undefined && (window.walls.length > 4 || window.CURRENT_SCENE_DATA.darkness_filter > 0)) || window.TOKEN_OBJECTS[playerTokenId].options.auraislight === true)
+	if((playerTokenId === undefined && (window.walls.length > 4 || window.CURRENT_SCENE_DATA.darkness_filter > 0)) || (playerTokenId !== undefined && window.TOKEN_OBJECTS[playerTokenId].options.auraislight === true))
 		playerTokenHasVision = true
 	else
 		playerTokenHasVision = false;
@@ -850,7 +852,7 @@ function do_check_token_visibility() {
 			
 			const inFog = (playerTokenId !== id && is_token_under_fog(id, fogContext) === true); // this token is in fog and not the players token
 
-			const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision !== 1 && playerTokenHasVision && is_token_in_raycasting_context(id, rayContext) !== true) || (playerTokenId !== id && window.CURRENT_SCENE_DATA.disableSceneVision !== 1 && playerTokenHasVision === true && is_token_under_light_aura(id, lightContext) !== true)); // this token is not in light, the player is using vision/light and darkness > 0
+			const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision != 1 && playerTokenHasVision && is_token_in_raycasting_context(id, rayContext) !== true) || (playerTokenId !== id && window.CURRENT_SCENE_DATA.disableSceneVision != 1 && playerTokenHasVision === true && is_token_under_light_aura(id, lightContext) !== true)); // this token is not in light, the player is using vision/light and darkness > 0
 			
 			const dmSelected = window.DM === true && window.CURRENTLY_SELECTED_TOKENS.includes(id)
 
@@ -890,7 +892,7 @@ function do_check_token_visibility() {
 
 			const inFog = (is_door_under_fog(door, fogContext)); // this token is in fog and not the players token
 
-			const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision !== 1 && playerTokenHasVision === true && is_door_under_light_aura(door, lightContext) !== true && (window.CURRENT_SCENE_DATA.darkness_filter > 0 || window.walls.length>4))); // this token is not in light, the player is using vision/light and darkness > 0
+			const notInLight = (inFog === true || (window.CURRENT_SCENE_DATA.disableSceneVision != 1 && playerTokenHasVision === true && is_door_under_light_aura(door, lightContext) !== true && (window.CURRENT_SCENE_DATA.darkness_filter > 0 || window.walls.length>4))); // this token is not in light, the player is using vision/light and darkness > 0
 			
 			if (notInLight || $(door).hasClass('secret')) {
 				hideDoors.push(`[data-id='${doorId}']`)
@@ -4169,12 +4171,19 @@ function drawPolygon (
 			[canvasWidth, canvasHeight] = [getSceneMapSize().sceneWidth, getSceneMapSize().sceneHeight];
 		}
 
-		let tempoffCanvas = document.createElement('canvas');
-		let tempoffContext = tempoffCanvas.getContext('2d');
-		tempoffCanvas.width = canvasWidth;
-		tempoffCanvas.height = canvasHeight;
+		if(window.tempoffCanvas == undefined){
+			window.tempoffCanvas = document.createElement('canvas');
+			window.tempoffContext = tempoffCanvas.getContext('2d');
+			tempoffCanvas.width = canvasWidth;
+			tempoffCanvas.height = canvasHeight;
+			tempoffContext.lineWidth = 6;
+			tempoffContext.fillStyle = 'rgba(255,255,255,1)';
+			tempoffContext.strokeStyle = 'rgba(0,0,0,1)';
+		}
+		else{
+			tempoffContext.clearRect(0, 0, tempoffCanvas.width, tempoffCanvas.height)
+		}
 
-		tempoffContext.save();
 		tempoffContext.beginPath();
 		let adjustScale = (scale/window.CURRENT_SCENE_DATA.scale_factor)	
 		
@@ -4189,9 +4198,8 @@ function drawPolygon (
 			tempoffContext.lineTo(mouseX/adjustScale/window.CURRENT_SCENE_DATA.scale_factor, mouseY/adjustScale/window.CURRENT_SCENE_DATA.scale_factor);
 		}
 		tempoffContext.closePath();
-		tempoffContext.lineWidth = lineWidth;
-		tempoffContext.fillStyle = style;
-		tempoffContext.strokeStyle = 'rgba(0,0,0,1)';
+		
+	
 		tempoffContext.fill();
 		tempoffContext.stroke();
 
