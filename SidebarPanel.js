@@ -479,10 +479,8 @@ function build_flyout_input(settingOption, currentValue, changeHandler){
         build_and_display_sidebar_flyout(clickEvent.clientY, function (flyout) {
           let currentValue = get_avtt_setting_value(settingOption.name);
             let optionsContainer = build_sidebar_token_options_flyout(settingOption.options, currentValue, function(name, value) {
-                if(window.defaultToggles == undefined)
-                  window.defaultToggles = get_avtt_setting_value('quickToggleDefaults');
-                window.defaultToggles[name] = value;
-            }, function(){changeHandler(settingOption.name, window.defaultToggles)}, false, true);
+                currentValue[name] = value;
+            }, function(){changeHandler(settingOption.name, currentValue)}, false, true);
             flyout.append(optionsContainer);
             position_flyout_left_of($('#settings-panel .sidebar-panel-body'), flyout);
         });
@@ -490,6 +488,24 @@ function build_flyout_input(settingOption, currentValue, changeHandler){
     wrapper.append(flyoutButton)
     return wrapper;
 }
+
+function build_text_input(settingOption, currentValue, changeHandler) {
+  if (typeof changeHandler !== 'function') {
+    changeHandler = function(){};
+  }
+  let wrapper = $(`
+     <div class="token-image-modal-footer-select-wrapper" data-option-name="${settingOption.name}">
+       <div class="token-image-modal-footer-title">${settingOption.label}</div>
+     </div>
+  `);
+  const input = $(`<input class='flyout-text-input' type="text" name="${settingOption.name}" value="${currentValue != undefined ? currentValue : settingOption.defaultValue}" size="30"/>`);
+  input.on('blur',function() { 
+    changeHandler(settingOption.name, $(this).val()) 
+  });
+  wrapper.append(input);
+  return wrapper;
+}
+
 //#endregion UI Construction
 
 

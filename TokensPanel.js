@@ -988,11 +988,26 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
 
     options.imgsrc = random_image_for_item(listItem, specificImage);
 
+
     if(options.alternativeImagesCustomizations != undefined && options.alternativeImagesCustomizations[options.imgsrc] != undefined){
+        const visionOptions = {
+            'vision': {...options.vision},
+            'light1': {...options.light1},
+            'light2': {...options.light2}
+        }
         options = {
             ...options,
             ...options.alternativeImagesCustomizations[options.imgsrc],
             imgsrc: options.imgsrc
+        }
+        if(options.vision != undefined && options.vision?.feet == undefined && visionOptions?.vision?.feet != undefined){
+            options.vision.feet = visionOptions.vision.feet;
+        }
+         if(options.light1 != undefined && options.light1?.feet == undefined && visionOptions?.light1?.feet != undefined){
+            options.light1.feet = visionOptions.light1.feet;
+        }
+         if(options.light2 != undefined && options.light2?.feet == undefined && visionOptions?.light2?.feet != undefined){
+            options.light2.feet = visionOptions.light2.feet;
         }
     }
 
@@ -1248,9 +1263,9 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
         statText=statText[0].innerHTML;
         let hitDiceData =  $(statText).find('.custom-hp-roll.custom-stat').text();
         let averageHP = $(statText).find('.custom-avghp.custom-stat').text();
-        let searchText = statText.replace('mon-stat-block-2024', '').replace(/\&nbsp\;/g,' ')
+        let searchText = statText.replaceAll('mon-stat-block-2024', '').replaceAll(/\&nbsp\;/g,' ')
         if(averageHP == ''){
-            let match = searchText.matchAll(/(Hit Points|hp)[\s\D]+?([0-9]+)/gi).next()
+            let match = searchText.matchAll(/(Hit Points|hp)[\s\S]*?[\s>]([0-9]+)/gi).next()
             if(match.value != undefined){
                 averageHP = match.value[2] 
             }
@@ -1294,7 +1309,7 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
                 temp: 0
             };
         }
-        let newStatBlockInit = searchText.matchAll(/Initiative[\s\D]+?([+-][0-9]+)/gi).next()
+        let newStatBlockInit = searchText.matchAll(/Initiative[\s\S]*?[\s>]([+-][0-9]+)/gi).next()
 
         if(newStatBlockInit.value != undefined){
             if(newStatBlockInit.value[1] != undefined)
@@ -1411,7 +1426,7 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
         let newAC = $(searchText).find('.custom-ac.custom-stat').text();
 
         if(newAC == ''){
-            let match = searchText.matchAll(/(Armor Class|ac)[\s\D]+?([0-9]+)[<\.\s]/gi).next()
+            let match = searchText.matchAll(/(Armor Class|ac)[\s\S]*?[\s>]([0-9]+)[<\.\s]/gi).next()
             if(match.value != undefined && match.value[2] != undefined){
                 newAC = match.value[2]
             }
@@ -3812,6 +3827,35 @@ function create_token_copy_inside(listItem, open5e = false){
         options.sizeId = listItem.monsterData.sizeId;
         // TODO: handle custom sizes
     }
+
+    let darkvision = 0;
+    if(window.monsterListItems){
+        let monsterSidebarListItem = open5e ? window.open5eListItems.filter((d) => listItem.id == d.id)[0] : window.monsterListItems.filter((d) => listItem.id == d.id)[0]; 
+        if(!monsterSidebarListItem){
+            for(let i in encounter_monster_items){
+                if(encounter_monster_items[i].some((d) => options.monster == d.id)){
+                    monsterSidebarListItem = encounter_monster_items[i].filter((d) => listItem.id == d.id)[0]
+                    break;
+                }
+            }
+        }
+           
+        if(monsterSidebarListItem){
+            if(monsterSidebarListItem.monsterData.senses.length > 0){
+                for(let i=0; i < monsterSidebarListItem.monsterData.senses.length; i++){
+                    const ftPosition = monsterSidebarListItem.monsterData.senses[i].notes.indexOf('ft.')
+                    const range = parseInt(monsterSidebarListItem.monsterData.senses[i].notes.slice(0, ftPosition));
+                    if(range > darkvision)
+                        darkvision = range;
+                }
+            }
+        }
+    } 
+    options.vision = {
+        feet: darkvision.toString(),
+        color: (window.TOKEN_SETTINGS?.vision?.color) ? window.TOKEN_SETTINGS.vision.color : 'rgba(142, 142, 142, 1)'
+    }
+    
     options.monster = 'customStat'
     
     if(foundOptions.color != undefined){
