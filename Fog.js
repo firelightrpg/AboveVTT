@@ -531,9 +531,9 @@ class WaypointManagerClass {
 
 		// add ruler line and text
         let pathElements;
+        let rulerLineSVG;
         const strokeWidth = Math.floor(Math.max(15 * Math.max((1 - window.ZOOM), 0) / window.CURRENT_SCENE_DATA.scale_factor, 2));
         const outlineWidth = Math.floor(Math.max(25 * Math.max((1 - window.ZOOM), 0) / window.CURRENT_SCENE_DATA.scale_factor, 3));
-
 
         if (rulerType === "fiveten") {
             const gridPath = this.generateFivetenPath(gridX0, gridY0, gridX1, gridY1);
@@ -542,22 +542,37 @@ class WaypointManagerClass {
                 const py = gy * gridSize + (gridSize / 2) + window.CURRENT_SCENE_DATA.offsety;
                 return `${px},${py}`;
             }).join(" ");
-
-            pathElements = {
-                tag: "polyline",
-                attrs: `points='${pixelPath}' fill='none'`
-            };
+        
+            rulerLineSVG = `
+                <polyline 
+                    points='${pixelPath}' 
+                    stroke="${this.drawStyle.color}" 
+                    stroke-width="${outlineWidth}" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round" 
+                    fill="none" />
+                <polyline 
+                    points='${pixelPath}' 
+                    stroke="${this.drawStyle.color}" 
+                    stroke-width="${strokeWidth}" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round" 
+                    fill="none" />
+            `;
         } else {
-            pathElements = {
-                tag: "line",
-                attrs: `x1='${snapPointXStart}' y1='${snapPointYStart}' x2='${snapPointXEnd}' y2='${snapPointYEnd}'`
-            };
-        }
-
-        const rulerLineSVG = `
-            <${pathElements.tag} ${pathElements.attrs} stroke="${this.drawStyle.outlineColor}" stroke-width="${outlineWidth}" />
-            <${pathElements.tag} ${pathElements.attrs} stroke="${this.drawStyle.color}" stroke-width="${strokeWidth}" />
-        `;    
+            rulerLineSVG = `
+                <line 
+                    x1='${snapPointXStart}' y1='${snapPointYStart}' 
+                    x2='${snapPointXEnd}' y2='${snapPointYEnd}' 
+                    stroke="${this.drawStyle.color}" 
+                    stroke-width="${outlineWidth}" />
+                <line 
+                    x1='${snapPointXStart}' y1='${snapPointYStart}' 
+                    x2='${snapPointXEnd}' y2='${snapPointYEnd}' 
+                    stroke="${this.drawStyle.color}" 
+                    stroke-width="${strokeWidth}" />
+            `;
+        }        
 
         lines.append(rulerLineSVG);
 		
