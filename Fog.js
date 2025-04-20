@@ -345,6 +345,24 @@ class WaypointManagerClass {
 		})
 	}
 
+    //DEBUG
+    measure5eOptionalDiagonal(x0, y0, x1, y1) {
+        const dx = Math.abs(x1 - x0);
+        const dy = Math.abs(y1 - y0);
+        const diagonalSteps = Math.min(dx, dy);
+        const straightSteps = Math.abs(dx - dy);
+    
+        let diagonalCost = 0;
+        for (let i = 0; i < diagonalSteps; i++) {
+            diagonalCost += (i % 2 === 0) ? 5 : 10;
+        }
+    
+        const straightCost = straightSteps * 5;
+        return diagonalCost + straightCost;
+    }
+    
+    // END DEBUG
+
 	/**
 	* Make a waypoint segment SVGs with all the lines and labels etc.
 	* @param coord {{startX: number, startY: number, endX: number, endY: number, distance: number}}
@@ -417,8 +435,28 @@ class WaypointManagerClass {
 		const totalDistance = Number.isInteger(distance + cumulativeDistance)
 			? (distance + cumulativeDistance)
 			: (distance + cumulativeDistance).toFixed(1)
-		let text = `${totalDistance}${unitSymbol}`
-		let textMetrics = this.ctx.measureText(text);
+		// let text = `${totalDistance}${unitSymbol}`
+		// let textMetrics = this.ctx.measureText(text);
+
+        // Convert grid-relative coordinates
+        const gridX0 = Math.floor(snapPointXStart / gridSize);
+        const gridY0 = Math.floor(snapPointYStart / gridSize);
+        const gridX1 = Math.floor(snapPointXEnd / gridSize);
+        const gridY1 = Math.floor(snapPointYEnd / gridSize);
+
+        // Custom measurements
+        const dmgDistance = this.measure5eOptionalDiagonal(gridX0, gridY0, gridX1, gridY1);
+
+        // Base and extended label
+        let text = `${totalDistance}${unitSymbol}, ${dmgDistance}${unitSymbol}`;
+        let lineCount = text.length;
+
+        // Measure only longest line width (for horizontal space)
+        let textMetrics = this.ctx.measureText(text);
+
+        // Use original logic to set font size, but calculate total height from line count
+        let lineHeight = Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30);
+
 
 		let contrastRect = { x: 0, y: 0, width: 0, height: 0 }
 		let textRect = { x: 0, y: 0, width: 0, height: 0 }
@@ -428,12 +466,15 @@ class WaypointManagerClass {
 			contrastRect.x = labelX - margin + slopeModifier;
 			contrastRect.y = labelY - margin + slopeModifier;
 			contrastRect.width = textMetrics.width + (margin * 4);
-			contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
+			// contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
+            contrastRect.height = (lineHeight * lineCount) + (margin * 3);
 
 			textRect.x = labelX + slopeModifier;
 			textRect.y = labelY + slopeModifier;
 			textRect.width = textMetrics.width + (margin * 3);
-			textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
+			// textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
+
+            textRect.height = (lineHeight * lineCount) + margin;
 
 			textRect.x -= (textRect.width / 2);
 			textX = (labelX + margin + slopeModifier - (textRect.width / 2));
@@ -447,12 +488,14 @@ class WaypointManagerClass {
 			contrastRect.x = snapPointXEnd - margin + slopeModifier;
 			contrastRect.y = snapPointYEnd - margin + slopeModifier;
 			contrastRect.width = textMetrics.width + (margin * 4);
-			contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
+			// contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
+            contrastRect.height = (lineHeight * lineCount) + (margin * 3);
 
 			textRect.x = snapPointXEnd + slopeModifier;
 			textRect.y = snapPointYEnd + slopeModifier;
 			textRect.width = textMetrics.width + (margin * 3);
-			textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
+			// textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
+            textRect.height = (lineHeight * lineCount) + margin;
 
 			textX = snapPointXEnd + margin + slopeModifier;
 			textY = snapPointYEnd + (margin * 2) + slopeModifier;
