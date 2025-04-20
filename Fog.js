@@ -345,8 +345,8 @@ class WaypointManagerClass {
 		})
 	}
 
-    //DEBUG
-    measure5eOptionalDiagonal(x0, y0, x1, y1) {
+    // Measure the shortest distance by default, using DMG 2014 optional grid (one-two-one)
+    fiveten(x0, y0, x1, y1) {
         const dx = Math.abs(x1 - x0);
         const dy = Math.abs(y1 - y0);
         const diagonalSteps = Math.min(dx, dy);
@@ -360,8 +360,37 @@ class WaypointManagerClass {
         const straightCost = straightSteps * 5;
         return diagonalCost + straightCost;
     }
+
+    // Snap the line
+    generateFivetenPath(x0, y0, x1, y1) {
+        const path = [];
+        let dx = Math.abs(x1 - x0);
+        let dy = Math.abs(y1 - y0);
+        let x = x0;
+        let y = y0;
+        const sx = x0 < x1 ? 1 : -1;
+        const sy = y0 < y1 ? 1 : -1;
     
-    // END DEBUG
+        path.push([x, y]);
+    
+        while (dx > 0 || dy > 0) {
+            if (dx > 0 && dy > 0) {
+                x += sx;
+                y += sy;
+                dx--;
+                dy--;
+            } else if (dx > 0) {
+                x += sx;
+                dx--;
+            } else {
+                y += sy;
+                dy--;
+            }
+            path.push([x, y]);
+        }
+    
+        return path;
+    }
 
 	/**
 	* Make a waypoint segment SVGs with all the lines and labels etc.
@@ -377,7 +406,6 @@ class WaypointManagerClass {
 		let gridSize =  window.CURRENT_SCENE_DATA.hpps/window.CURRENT_SCENE_DATA.scale_factor;
 		let snapPointXStart = coord.startX;
 		let snapPointYStart = coord.startY;
-	
 
 		let snapPointXEnd = coord.endX;
 		let snapPointYEnd = coord.endY;
@@ -393,8 +421,9 @@ class WaypointManagerClass {
 		const yAdjustment = window.CURRENT_SCENE_DATA.scaleAdjustment?.y != undefined ? window.CURRENT_SCENE_DATA.scaleAdjustment.y : 1;
 		const xLength = Math.abs(snapPointXStart - snapPointXEnd)/xAdjustment;
 		const yLength = Math.abs(snapPointYStart - snapPointYEnd)/yAdjustment;
-		let distance = Math.max(xLength, yLength);
+		let distance = Math.max(xLength, yLength);  // 5' per grid, including diagonal
 		const rulerType = $('#ruler_menu .button-enabled').attr('data-type');
+
 		if(window.CURRENT_SCENE_DATA.gridType != undefined){
 			if((xLength > yLength && window.CURRENT_SCENE_DATA.gridType != 1 && rulerType != 'euclidean') || (window.CURRENT_SCENE_DATA.gridType == 2 && rulerType == 'euclidean')){
 				gridSize = window.hexGridSize.width/window.CURRENT_SCENE_DATA.scale_factor;
@@ -402,27 +431,24 @@ class WaypointManagerClass {
 				gridSize = window.hexGridSize.height/window.CURRENT_SCENE_DATA.scale_factor;
 			}
 		}
-		
-		
 
-		const eucDistance = Math.sqrt(xLength*xLength+yLength*yLength)/gridSize * window.CURRENT_SCENE_DATA.fpsq;
-		distance = Math.round(distance / gridSize);
+        const gridX0 = Math.floor(snapPointXStart / gridSize);
+        const gridY0 = Math.floor(snapPointYStart / gridSize);
+        const gridX1 = Math.floor(snapPointXEnd / gridSize);
+        const gridY1 = Math.floor(snapPointYEnd / gridSize);
 
-		const lineSlope = yLength/xLength;
-		let addedDistance = 0;
-
-		if(rulerType == "fiveten" && lineSlope > 0.6 && lineSlope < 1.4){
-			this.numberOfDiagonals = (this.numberOfDiagonals%2 == 0) ? distance : distance+1 ;
-			addedDistance = Math.floor(this.numberOfDiagonals/2);
+        if(rulerType == "fiveten"){
+            // Convert grid-relative coordinates
+            distance = this.fiveten(gridX0, gridY0, gridX1, gridY1);
 		}
-
-		distance = (rulerType == 'euclidean') ? eucDistance : (distance+addedDistance) * window.CURRENT_SCENE_DATA.fpsq;
+        else if (rulerType == "euclidean") {
+            distance = Math.sqrt(xLength*xLength+yLength*yLength)/gridSize * window.CURRENT_SCENE_DATA.fpsq;
+        }
+        else { // 5' per grid, including digonal
+            distance = Math.round(distance / gridSize) * window.CURRENT_SCENE_DATA.fpsq;
+        }
 		
-	
-		
-		
-
-		coord.distance = distance;
+        coord.distance = distance;
 
 		let textX = 0;
 		let textY = 0;
@@ -435,29 +461,8 @@ class WaypointManagerClass {
 		const totalDistance = Number.isInteger(distance + cumulativeDistance)
 			? (distance + cumulativeDistance)
 			: (distance + cumulativeDistance).toFixed(1)
-		// let text = `${totalDistance}${unitSymbol}`
-		// let textMetrics = this.ctx.measureText(text);
-
-        // Convert grid-relative coordinates
-        const gridX0 = Math.floor(snapPointXStart / gridSize);
-        const gridY0 = Math.floor(snapPointYStart / gridSize);
-        const gridX1 = Math.floor(snapPointXEnd / gridSize);
-        const gridY1 = Math.floor(snapPointYEnd / gridSize);
-
-        // Custom measurements
-        const dmgDistance = this.measure5eOptionalDiagonal(gridX0, gridY0, gridX1, gridY1);
-
-        // Base and extended label
-        let text = `${totalDistance}${unitSymbol}, ${dmgDistance}${unitSymbol}`;
-        let lineCount = text.length;
-
-        // Measure only longest line width (for horizontal space)
-        let textMetrics = this.ctx.measureText(text);
-
-        // Use original logic to set font size, but calculate total height from line count
-        let lineHeight = Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30);
-
-
+		let text = `${totalDistance}${unitSymbol}`
+		let textMetrics = this.ctx.measureText(text);
 		let contrastRect = { x: 0, y: 0, width: 0, height: 0 }
 		let textRect = { x: 0, y: 0, width: 0, height: 0 }
 
@@ -466,15 +471,12 @@ class WaypointManagerClass {
 			contrastRect.x = labelX - margin + slopeModifier;
 			contrastRect.y = labelY - margin + slopeModifier;
 			contrastRect.width = textMetrics.width + (margin * 4);
-			// contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
-            contrastRect.height = (lineHeight * lineCount) + (margin * 3);
+			contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
 
 			textRect.x = labelX + slopeModifier;
 			textRect.y = labelY + slopeModifier;
 			textRect.width = textMetrics.width + (margin * 3);
-			// textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
-
-            textRect.height = (lineHeight * lineCount) + margin;
+			textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
 
 			textRect.x -= (textRect.width / 2);
 			textX = (labelX + margin + slopeModifier - (textRect.width / 2));
@@ -488,14 +490,12 @@ class WaypointManagerClass {
 			contrastRect.x = snapPointXEnd - margin + slopeModifier;
 			contrastRect.y = snapPointYEnd - margin + slopeModifier;
 			contrastRect.width = textMetrics.width + (margin * 4);
-			// contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
-            contrastRect.height = (lineHeight * lineCount) + (margin * 3);
+			contrastRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + (margin * 3);
 
 			textRect.x = snapPointXEnd + slopeModifier;
 			textRect.y = snapPointYEnd + slopeModifier;
 			textRect.width = textMetrics.width + (margin * 3);
-			// textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
-            textRect.height = (lineHeight * lineCount) + margin;
+			textRect.height =  Math.max(150 * Math.max((1 - window.ZOOM), 0)/window.CURRENT_SCENE_DATA.scale_factor, 30) + margin;
 
 			textX = snapPointXEnd + margin + slopeModifier;
 			textY = snapPointYEnd + (margin * 2) + slopeModifier;
@@ -530,13 +530,36 @@ class WaypointManagerClass {
 		const { sceneWidth, sceneHeight } = sceneMapSize;
 
 		// add ruler line and text
+        let pathElements;
+        const strokeWidth = Math.floor(Math.max(15 * Math.max((1 - window.ZOOM), 0) / window.CURRENT_SCENE_DATA.scale_factor, 2));
+        const outlineWidth = Math.floor(Math.max(25 * Math.max((1 - window.ZOOM), 0) / window.CURRENT_SCENE_DATA.scale_factor, 3));
 
-		const rulerLineSVG = `
-			<line x1='${snapPointXStart}' y1='${snapPointYStart}' x2='${snapPointXEnd}' y2='${snapPointYEnd}' stroke="${this.drawStyle.outlineColor}"></line>
-			<line x1='${snapPointXStart}' y1='${snapPointYStart}' x2='${snapPointXEnd}' y2='${snapPointYEnd}' stroke="${this.drawStyle.color}"></line>
-		`;
-		lines.append(rulerLineSVG);
 
+        if (rulerType === "fiveten") {
+            const gridPath = this.generateFivetenPath(gridX0, gridY0, gridX1, gridY1);
+            const pixelPath = gridPath.map(([gx, gy]) => {
+                const px = gx * gridSize + (gridSize / 2) + window.CURRENT_SCENE_DATA.offsetx;
+                const py = gy * gridSize + (gridSize / 2) + window.CURRENT_SCENE_DATA.offsety;
+                return `${px},${py}`;
+            }).join(" ");
+
+            pathElements = {
+                tag: "polyline",
+                attrs: `points='${pixelPath}' fill='none'`
+            };
+        } else {
+            pathElements = {
+                tag: "line",
+                attrs: `x1='${snapPointXStart}' y1='${snapPointYStart}' x2='${snapPointXEnd}' y2='${snapPointYEnd}'`
+            };
+        }
+
+        const rulerLineSVG = `
+            <${pathElements.tag} ${pathElements.attrs} stroke="${this.drawStyle.outlineColor}" stroke-width="${outlineWidth}" />
+            <${pathElements.tag} ${pathElements.attrs} stroke="${this.drawStyle.color}" stroke-width="${strokeWidth}" />
+        `;    
+
+        lines.append(rulerLineSVG);
 		
 		if(bobbles.children().length == 0){
 			const startBobble = this.makeBobble(snapPointXStart, snapPointYStart);
