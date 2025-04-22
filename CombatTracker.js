@@ -62,7 +62,7 @@ function sendMessage(message) {
 
 // Function to safely send messages
 function sendMessage(message) {
-    if (!getIsDM()) {
+    if (!canSendMusicControl()) {
         return;
     }
     if (isConnected && ws.readyState === WebSocket.OPEN) {
