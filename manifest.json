@@ -27,7 +27,7 @@
 	},
 	"browser_specific_settings": {
 	  "gecko": {
-	    "id": "{52e126d4-d2d7-483a-a0a1-6e8aace23253}"
+	    "id": "abovevtt-fiveten-audio@local"
 	  }
 	},
 	"web_accessible_resources": [
@@ -105,4 +105,3 @@
 		}
 	]
 }
-
