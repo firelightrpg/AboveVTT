@@ -1,20 +1,32 @@
-let ws;
+let ws = null;
 let isConnected = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 2000;
 
-
-function getIsDM() {
+function isDM() {
     return window.location.pathname.includes("/encounters/");
 }
 
+function canSendMusicControl() {
+    return isDM() && isConnected && ws?.readyState === WebSocket.OPEN;
+}
+
 function setupWebSocket() {
-    if (!getIsDM()) {
+    if (!isDM()) {
         return;
     }
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.warn("WebSocket: Max reconnect attempts reached. Giving up.");
+        return;
+    }
+
     ws = new WebSocket("ws://127.0.0.1:26796/ws");
 
     ws.onopen = () => {
         console.log("WebSocket connected");
         isConnected = true;
+        reconnectAttempts = 0;
     };
 
     ws.onerror = (error) => {
@@ -22,17 +34,31 @@ function setupWebSocket() {
         isConnected = false;
     };
 
-    ws.onmessage = (event) => console.log("Message from server:", event.data);
+    ws.onmessage = (event) => {
+        console.log("Message from server:", event.data);
+    };
 
     ws.onclose = () => {
-        console.warn("WebSocket closed. Attempting to reconnect...");
         isConnected = false;
-        setTimeout(setupWebSocket, 2000); // Try reconnecting every 2 seconds
+        reconnectAttempts += 1;
+        console.warn(`WebSocket closed. Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
+        setTimeout(setupWebSocket, RECONNECT_DELAY);
     };
 }
 
-// Start WebSocket connection
 setupWebSocket();
+
+function sendMessage(message) {
+    if (!canSendMusicControl()) {
+        console.debug("Music control not available (not DM or not connected). Message skipped:", message);
+        return;
+    }
+    try {
+        ws.send(message);
+    } catch (err) {
+        console.error("Failed to send music control message:", err);
+    }
+}
 
 // Function to safely send messages
 function sendMessage(message) {
