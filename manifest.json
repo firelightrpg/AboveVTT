@@ -1,8 +1,8 @@
 {
 	"manifest_version": 3,
-	"name": "AboveVTT",
+	"name": "AboveVTT-unofficial-fiveten-audio",
 	"description": "Integrated VTT for D&DBeyond",
-	"version": "1.39",
+	"version": "1.39-fiveten-audio",
 	"content_scripts": [
 		{
 			"matches": [
