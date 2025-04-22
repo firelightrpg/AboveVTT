@@ -1,3 +1,51 @@
+let ws;
+let isConnected = false;
+
+
+function getIsDM() {
+    return window.location.pathname.includes("/encounters/");
+}
+
+function setupWebSocket() {
+    if (!getIsDM()) {
+        return;
+    }
+    ws = new WebSocket("ws://127.0.0.1:26796/ws");
+
+    ws.onopen = () => {
+        console.log("WebSocket connected");
+        isConnected = true;
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        isConnected = false;
+    };
+
+    ws.onmessage = (event) => console.log("Message from server:", event.data);
+
+    ws.onclose = () => {
+        console.warn("WebSocket closed. Attempting to reconnect...");
+        isConnected = false;
+        setTimeout(setupWebSocket, 2000); // Try reconnecting every 2 seconds
+    };
+}
+
+// Start WebSocket connection
+setupWebSocket();
+
+// Function to safely send messages
+function sendMessage(message) {
+    if (!getIsDM()) {
+        return;
+    }
+    if (isConnected && ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+    } else {
+        console.warn("WebSocket not ready. Retrying in 500ms:", message);
+        setTimeout(() => sendMessage(message), 500);
+    }
+}
 
 const debounceCombatReorder = combatmydebounce((resetCurrent = false) => {
 	ct_reorder(window.DM)
@@ -50,20 +98,25 @@ function init_combat_tracker(){
 	ct.css("height","20px"); // IMPORTANT
 	
 	let toggle=$("<button id='combat_button' class='hideable ddbc-tab-options__header-heading' style='display:inline-block'><u>C</u>OMBAT</button>");
-	toggle.click(function(){
-		if($("#combat_tracker_inside #combat_tracker_title_bar.minimized").length>0) {
+	
+	// Modify toggle click event
+	toggle.click(function () {
+		if ($("#combat_tracker_inside #combat_tracker_title_bar.minimized").length > 0) {
 			$("#combat_tracker_title_bar").dblclick();
 		}
-		if($("#combat_tracker_inside").is(":visible")){
+		
+		if ($("#combat_tracker_inside").is(":visible")) {
 			$("#combat_tracker_inside").attr('style', 'display: none;');
-			$("#combat_tracker").css("height","20px"); // IMPORTANT
+			$("#combat_tracker").css("height", "20px"); // IMPORTANT
 			toggle.removeClass("ddbc-tab-options__header-heading--is-active");
-		}
-		else{
+			sendMessage("combat_end"); // Send message properly
+		} else {
 			$("#combat_tracker_inside").attr('style', 'display: block;');
-			$("#combat_tracker").css("height","450px"); // IMPORTANT
+			$("#combat_tracker").css("height", "450px"); // IMPORTANT
 			toggle.addClass("ddbc-tab-options__header-heading--is-active");
+			sendMessage("combat_start"); // Send message properly
 		}
+		
 		reposition_player_sheet(); // not sure if this needs to be here, but maybe for smaller screens?
 	});
 	let pill = $(`<div class="ddbc-tab-options--layout-pill" />`);
