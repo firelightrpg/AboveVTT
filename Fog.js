@@ -351,12 +351,12 @@ class WaypointManagerClass {
         const dy = Math.abs(y1 - y0);
         const diagonalSteps = Math.min(dx, dy);
         const straightSteps = Math.abs(dx - dy);
-    
+
         let diagonalCost = 0;
         for (let i = 0; i < diagonalSteps; i++) {
             diagonalCost += (i % 2 === 0) ? 5 : 10;
         }
-    
+
         const straightCost = straightSteps * 5;
         return diagonalCost + straightCost;
     }
@@ -370,9 +370,9 @@ class WaypointManagerClass {
         let y = y0;
         const sx = x0 < x1 ? 1 : -1;
         const sy = y0 < y1 ? 1 : -1;
-    
+
         path.push([x, y]);
-    
+
         while (dx > 0 || dy > 0) {
             if (dx > 0 && dy > 0) {
                 x += sx;
@@ -388,7 +388,7 @@ class WaypointManagerClass {
             }
             path.push([x, y]);
         }
-    
+
         return path;
     }
 
@@ -542,37 +542,37 @@ class WaypointManagerClass {
                 const py = gy * gridSize + (gridSize / 2) + window.CURRENT_SCENE_DATA.offsety;
                 return `${px},${py}`;
             }).join(" ");
-        
+
             rulerLineSVG = `
-                <polyline 
-                    points='${pixelPath}' 
-                    stroke="${this.drawStyle.color}" 
-                    stroke-width="${outlineWidth}" 
-                    stroke-linecap="round" 
-                    stroke-linejoin="round" 
+                <polyline
+                    points='${pixelPath}'
+                    stroke="${this.drawStyle.color}"
+                    stroke-width="${outlineWidth}"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                     fill="none" />
-                <polyline 
-                    points='${pixelPath}' 
-                    stroke="${this.drawStyle.color}" 
-                    stroke-width="${strokeWidth}" 
-                    stroke-linecap="round" 
-                    stroke-linejoin="round" 
+                <polyline
+                    points='${pixelPath}'
+                    stroke="${this.drawStyle.color}"
+                    stroke-width="${strokeWidth}"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                     fill="none" />
             `;
         } else {
             rulerLineSVG = `
-                <line 
-                    x1='${snapPointXStart}' y1='${snapPointYStart}' 
-                    x2='${snapPointXEnd}' y2='${snapPointYEnd}' 
-                    stroke="${this.drawStyle.color}" 
+                <line
+                    x1='${snapPointXStart}' y1='${snapPointYStart}'
+                    x2='${snapPointXEnd}' y2='${snapPointYEnd}'
+                    stroke="${this.drawStyle.color}"
                     stroke-width="${outlineWidth}" />
-                <line 
-                    x1='${snapPointXStart}' y1='${snapPointYStart}' 
-                    x2='${snapPointXEnd}' y2='${snapPointYEnd}' 
-                    stroke="${this.drawStyle.color}" 
+                <line
+                    x1='${snapPointXStart}' y1='${snapPointYStart}'
+                    x2='${snapPointXEnd}' y2='${snapPointYEnd}'
+                    stroke="${this.drawStyle.color}"
                     stroke-width="${strokeWidth}" />
             `;
-        }        
+        }
 
         lines.append(rulerLineSVG);
 		
@@ -6724,7 +6724,3 @@ function clipped_light(auraId, maskPolygon, playerTokenId, canvasWidth = getScen
 
 
 }
-
-
-
-
