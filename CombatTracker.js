@@ -2,6 +2,9 @@ let ws;
 let isConnected = false;
 
 function setupWebSocket() {
+    if (window?.CURRENT_CAMPAIGN?.role != "dm") {
+        return;
+    }
     ws = new WebSocket("ws://127.0.0.1:26796/ws");
 
     ws.onopen = () => {
@@ -28,6 +31,9 @@ setupWebSocket();
 
 // Function to safely send messages
 function sendMessage(message) {
+    if (window?.CURRENT_CAMPAIGN?.role != "dm") {
+        return;
+    }
     if (isConnected && ws.readyState === WebSocket.OPEN) {
         ws.send(message);
     } else {
