@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "AboveVTT-unofficial-fiveten-audio",
-	"description": "Integrated VTT for D&DBeyond",
+	"description": "Unofficial fork of AboveVTT with DM-only WebSocket-based audio control and best-path approximations for snapped table-friendly measurements (5-10 points). Not affiliated with the original AboveVTT project",
 	"version": "1.39-fiveten-audio",
 	"content_scripts": [
 		{
