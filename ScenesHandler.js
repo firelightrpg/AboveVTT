@@ -773,7 +773,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 			}
 			else {
 				//chapter, subchapter (eg icewind), chapter, handouts and maps (eg. Curse of Strahd)
-				iframe.contents().find("h3 > a, h3 ~ ul strong a, h4 > a, h3.adventure-chapter-header:contains('Appendices') ~ ul a").each(function(idx) {
+				iframe.contents().find("h3 > a, h3 ~ ul strong a, h4 > a, h3.adventure-chapter-header:contains('Appendices') ~ ul a, h3 ~ ul>li a:not([href*='#'])").each(function(idx) {
 					let title = $(this).text();
 					let url = $(this).attr('href');
 					let ch_keyword = url.replace('https://www.dndbeyond.com', '').replace('/sources/' + keyword + "/", '').replace('/sources/' + keyword.replace('dnd/', '') + "/", '')
@@ -999,11 +999,12 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 		});
 	}
 
-	create_update_token(options, save = true) {
+	create_update_token(options, noScale = false ) {
 		console.log("create_update_token");
 		let self = this;
 		let id = options.id;
-		options.scaleCreated = window.CURRENT_SCENE_DATA.scale_factor;
+		if(!noScale)
+			options.scaleCreated = window.CURRENT_SCENE_DATA.scale_factor;
 		this.scene.tokens[id]=options;
 
 		if (!(id in window.TOKEN_OBJECTS)) {

@@ -447,7 +447,19 @@ const buffsDebuffs = {
       },
       "newRoll": '1d20min10',
       "type": "class",
-      "type": "rogue"
+      "class": "rogue",
+  },
+  "Pass Without a Trace":{
+    "tohit": "0",
+    "dmg": "0",
+    "save": "0",
+    "check": "0",
+    "replace": /^1d20/gi,
+    "replaceType": {
+      "check": '.ct-skills__item:contains("Stealth")' //looks for stealth
+    },
+    "newRoll": '1d20+10',
+    "type": "spell",
   },
   "Great Weapon Fighting": {
     "multiOptions": {
@@ -980,20 +992,27 @@ function init_character_list_page_without_avtt() {
   window.location_href_observer = new MutationObserver(function(mutationList, observer) {
     if (oldHref !== document.location.href) {
       if(is_characters_builder_page()){
-         window.oldHref = document.location.href;
-        if (window.location_href_observer) {
-          window.location_href_observer.disconnect();
-          delete window.location_href_observer;
-        }
-        $('#site-main').css({
-          'visibility':'',
-          'display': ''
-        });
-        setTimeout(function(){
-          $(".builder-sections-sheet-icon").off().on("click", function(){
-            window.location.href = `https://www.dndbeyond.com${$(".builder-sections-sheet-icon").attr("href")}?abovevtt=true`;
+        
+        if(oldHref.includes('abovevtt=true')){
+          window.oldHref = document.location.href;
+          if (window.location_href_observer) {
+            window.location_href_observer.disconnect();
+            delete window.location_href_observer;
+          }
+          $('#site-main').css({
+            'visibility':'',
+            'display': ''
           });
-        }, 1000)
+          setTimeout(function(){
+            $(".builder-sections-sheet-icon").off().on("click", function(){
+              window.location.href = `https://www.dndbeyond.com${$(".builder-sections-sheet-icon").attr("href")}?abovevtt=true`;
+            });
+          }, 1000)
+        }
+        else{
+          window.oldHref = document.location.href;
+        }
+      
       }
       else if (!is_characters_list_page()) {
         console.log("Detected location change from", oldHref, "to", document.location.href);
@@ -1026,9 +1045,10 @@ function inject_dice_roll(element, clear=true) {
     console.debug("inject_dice_roll slashCommands", slashCommands);
     let updatedInnerHtml = element.text();
     for (const command of slashCommands) {
+      let originalCommand = command[0];
       try {
         let iconRoll = command[0].startsWith('/ir');
-        let originalCommand = command[0];
+        
         if(iconRoll){
           command[0] = command[0].replace(/^(\/ir)/i, '/r')
           command[1] = 'r';
@@ -1037,7 +1057,7 @@ function inject_dice_roll(element, clear=true) {
         updatedInnerHtml = updatedInnerHtml.replace(originalCommand, `<button class='avtt-roll-formula-button integrated-dice__container ${iconRoll ? 'abovevtt-icon-roll' : ''}' title="${diceRoll.action?.toUpperCase() ?? "CUSTOM"}: ${diceRoll.rollType?.toUpperCase() ?? "ROLL"}" data-slash-command="${command[0]}">${diceRoll.expression}</button>`);
       } catch (error) {
         console.warn("inject_dice_roll failed to parse slash command. Removing the command to avoid infinite loop", command, command[0]);
-        updatedInnerHtml = updatedInnerHtml.replace(command[0], '');
+        updatedInnerHtml = updatedInnerHtml.replace(originalCommand, '');
       }
     }
     if(clear == true){
@@ -1434,7 +1454,7 @@ function observe_character_sheet_changes(documentToObserve) {
           const button = $("<button class='above-aoe integrated-dice__container'></button>");
 
           const spellContainer = $(this).closest('.ct-spells-spell')
-          const name = spellContainer.find(".ddbc-spell-name").first().text()
+          const name = spellContainer.find(".ddbc-spell-name, [class*='styles_spellName']").first().text()
           let color = "default"
           const feet = $(this).prev().find("[class*='styles_numberDisplay'] span:first-of-type").text();
           const dmgIcon = $(this).closest('.ct-spells-spell').find('.ddbc-damage-type-icon');
@@ -2765,15 +2785,14 @@ function observe_character_image_change() {
     mutationList.forEach(mutation => {
       try {
         // This should be just fine, but catch any parsing errors just in case
-        const updatedUrl = get_higher_res_url($(mutation.target).css("background-image").slice(4, -1).replace(/"/g, ""));
+        const updatedUrl = get_higher_res_url($(mutation.target).attr("src"));
         window.PLAYER_IMG = updatedUrl;
-        character_sheet_changed({imgsrc: updatedUrl,
-                                avatarUrl: updatedUrl,
+        character_sheet_changed({avatarUrl: updatedUrl,
                                 image: updatedUrl});
       } catch { }
     });
   });
-  window.character_image_observer.observe(document.querySelector(".ddbc-character-avatar__portrait"), { attributeFilter: ["style"] });
+  window.character_image_observer.observe(document.querySelector(".ddbc-character-avatar__portrait"), { attributeFilter: ["src"] });
 }
 
 function update_window_color(colorValue) {

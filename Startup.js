@@ -151,6 +151,9 @@ $(function() {
               }   
             }
           }
+          if(event.data.msgType=='DMOpenAlready' && window.DM){  
+            window.close();
+          }
           if(event.data.msgType=='dropExtra' && (event.data.sendTo == window.PLAYER_ID || (window.DM && event.data.sendTo == false))){    
             if(event.data.data.playerID != undefined){
               let pc = find_pc_by_player_id(event.data.data.playerID, false)
@@ -323,6 +326,7 @@ async function start_above_vtt_common() {
   window.PC_TOKENS_NEEDING_UPDATES = [];
   window.PC_NEEDS_API_CALL = {};
 
+  
   await load_external_script("https://www.youtube.com/iframe_api");
   $("#site").append("<div id='windowContainment'></div>");
 
