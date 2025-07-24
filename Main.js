@@ -3172,8 +3172,16 @@ function init_help_menu() {
 							<dd>Force recenter camera and instant teleport token for those receiving the message. (Always does this for those clicking the portal)</dd>
 						</dl>
 						<dl>
-							<dt>Hold ${getShiftKeyName()} while drawing walls</dt>
-							<dd>Create Segemented Wall. This keeps walls from having pin point holes.</dd>
+							<dt>${getModKeyName()}+A while edit wall points tool is selected</dt>
+							<dd>Select all wall points</dd>
+						</dl>
+						<dl>
+							<dt>Hold ${getShiftKeyName()} while selecting wall points with edit point tool</dt>
+							<dd>Adds any selected points to already selected group of points.</dd>
+						</dl>
+						<dl>
+							<dt>Hold ${getShiftKeyName()} while editting wall points</dt>
+							<dd>Instead of moving all selected points, it will rescale all lines that have a point selected.</dd>
 						</dl>
 						<dl>
 							<dt>${getModKeyName()}+click scenes/tokens while reordering (DM only)</dt>
