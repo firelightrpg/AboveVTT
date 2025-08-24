@@ -3,7 +3,7 @@ let isConnected = false;
 
 
 function getIsDM() {
-    return window.location.pathname.includes("/encounters/");
+    return window.location.pathname.includes("/campaigns/");
 }
 
 function setupWebSocket() {
@@ -109,12 +109,12 @@ function init_combat_tracker(){
 			$("#combat_tracker_inside").attr('style', 'display: none;');
 			$("#combat_tracker").css("height", "20px"); // IMPORTANT
 			toggle.removeClass("ddbc-tab-options__header-heading--is-active");
-			sendMessage("combat_end"); // Send message properly
+			
 		} else {
 			$("#combat_tracker_inside").attr('style', 'display: block;');
 			$("#combat_tracker").css("height", "450px"); // IMPORTANT
 			toggle.addClass("ddbc-tab-options__header-heading--is-active");
-			sendMessage("combat_start"); // Send message properly
+			
 		}
 		
 		reposition_player_sheet(); // not sure if this needs to be here, but maybe for smaller screens?
@@ -1083,6 +1083,8 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 	if($(selector).length>0)
 		return;
 
+	sendMessage("combat_start"); 
+
 	entry=$("<tr/>");
 	entry.css("height","30px");
 	entry.attr("data-target",token.options.id);	
@@ -1759,6 +1761,10 @@ function ct_remove_token(token,persist=true) {
 			$("#combat_next_button").click();
 		}
 		$("#combat_area tr[data-target='" + id + "']").remove(); // delete token from the combat tracker if it's there
+	} 
+
+	if ($("#combat_area tr[data-target='" + id + "']").length <= 0) {
+		sendMessage("combat_end"); 
 	}
 	ct_update_popout()
 	if (persist) {
