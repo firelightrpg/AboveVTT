@@ -249,6 +249,8 @@ Mousetrap.bind('s', function () {       //select
 });
 
 Mousetrap.bind('e', function () {       //elev
+    if(shiftHeld)
+        return;
     $('#elev_button').click()
 });
 
@@ -259,7 +261,7 @@ Mousetrap.bind('v', function () {       //video toggle
     $('#peerVideo_switch').click()
 });
 
-Mousetrap.bind('shift+v', function () {       //check token vision
+Mousetrap.bind('shift+v', function () {    
     if(window.SelectedTokenVision == true && $('#selected_token_vision .ddbc-tab-options__header-heading--is-active').length==0){
         window.SelectedTokenVision = false;
         if(window.DM)
@@ -268,7 +270,6 @@ Mousetrap.bind('shift+v', function () {       //check token vision
     else{
         window.SelectedTokenVision = true;
     }
-
    redraw_light();
 });
 
@@ -668,17 +669,33 @@ Mousetrap.bind('shift+h', function () {
 });
 
 Mousetrap.bind('mod+c', function(e) {
-    copy_selected_tokens();
+    if(window.selectedWalls?.length==0){
+        copy_selected_tokens();
+    }
+    else{
+        copy_selected_walls();
+    }
+    
 });
 
 
 Mousetrap.bind('mod+v', function(e) {
     if($('#temp_overlay:hover').length>0){
-        paste_selected_tokens(window.cursor_x, window.cursor_y);
+        if(window.TOKEN_PASTE_BUFFER?.[0]?.wall == undefined){
+            paste_selected_tokens(window.cursor_x, window.cursor_y);
+        }else{
+            paste_selected_walls(window.cursor_x, window.cursor_y);
+        }
+        
     } 
     else {
+
         let center = center_of_view();
-        paste_selected_tokens(center.x, center.y);
+        if(window.TOKEN_PASTE_BUFFER?.[0]?.wall == undefined){
+            paste_selected_tokens(center.x, center.y);
+        }else{
+            paste_selected_walls(center.x, center.y);
+        }
     }
 });
 Mousetrap.bind('mod+a', function (e) {    
@@ -725,6 +742,7 @@ document.onmousemove = function(event)
 
 Mousetrap.bind(['backspace', 'del'], function(e) {
     delete_selected_tokens();
+    delete_selected_walls();
 });
 Mousetrap.bind('mod+z', function(e) {
     if($('input:focus').length ==0){

@@ -33,6 +33,13 @@ body > button,
     border: 1px solid lightgray;
     font-size: 12px;
 }
+.top_menu input,
+.top_menu select{
+    box-sizing: border-box;
+}
+.top_menu select {
+    font-family: Roboto Condensed, Roboto, Helvetica, sans-serif !important;
+}
 table:is(#combat_area, #combat_area_carousel) .ac{
     position: absolute;
     top: 21px;
@@ -488,8 +495,7 @@ button .ddbc-tab-options__header-heading .menu-option{
 .door-button:hover .portal.foreground{
     background: linear-gradient(#fffc, #fffc), radial-gradient(ellipse at center, #00F 20%, transparent) !important;
 }
-.door-button:hover .door.foreground,
-{
+.door-button:hover .door.foreground{
     background: #fff;
 }
 
@@ -871,6 +877,9 @@ select#doorTypeSelectUVTT{
 }
 #elev_overlay{
     opacity: 0.5;
+}
+#weather_overlay{
+    pointer-events:none;
 }
 #combat_tracker_inside .ui-resizable-s,
 #combat_tracker_inside .ui-resizable-se,
@@ -1385,7 +1394,7 @@ input {
     #sources-import-content-container .card-listing .listing-card,
     #mega_importer .card-listing .listing-card {
         width: 50%;
-
+        min-width: 250px;
     }
     #sources-import-content-container .listing-card__title,
     #mega_importer .listing-card__title{
@@ -1607,9 +1616,16 @@ div#combat-tracker-settings form > div {
     content:"\eb4f"; 
     padding: 2px 0px;
 }
-
+.link.material-icons:before{
+    content:"\e157"; 
+    padding: 2px 0px;
+}
 .spatial-audio-off.material-icons:before{
     content:"\ebe8"; 
+    padding: 2px 0px;
+}
+.spatial-tracking.material-icons:before{
+    content:"\ebea"; 
     padding: 2px 0px;
 }
 #tokenOptionsContainer .select-to-speak.material-icons:before{
@@ -1671,7 +1687,15 @@ div#combat-tracker-settings form > div {
     line-height: 1.1;
     margin: 0px 2px;
 }
-
+.encounter-builder,
+.encounter-details,
+.release-indicator
+{
+    scale:0 !important;
+    visibility:hidden !important;
+    height:0;
+    pointer-events: none;
+}
 #scene_selector {
     position: fixed;
     left: 50%;
@@ -2226,19 +2250,20 @@ padding-top:10px;
     cursor: default;
 }
 
-.token .condition-img {
+:is(.token, .folder-item-list) .condition-img {
     padding: 0;
     margin: 0;
     background: #01ffff;
     border: 1px solid black;
     border-radius: 50%;
+    display:flex;
 }
 
 .token .custom-condition.condition-img {
     background: #F58231;
 }
 
-.token .note-condition.condition-img {
+:is(.token, .folder-item-list) .note-condition.condition-img {
     background: #e4c700;
 }
 
@@ -2516,7 +2541,7 @@ body>[class*='styles_mobileNav']>button{
 }*/
 
 /* .ct-sidebar__pane-content, */
-body:not(.body-rpgcampaign-details) .sidebar__pane-content {
+body:not(.encounter-builder-page) .sidebar__pane-content {
     position: absolute;
     right: 0;
     top: 28px;
@@ -2961,6 +2986,33 @@ button.roll-button-mod.minus {
     width: 100%;
     justify-content: center;
     align-items: center; 
+}
+body .note-visibility-toggle-container {
+    position:fixed;
+    background:#fff;
+    flex-wrap: wrap;
+    flex-direction: column;
+    border-radius:5px;
+    padding: 5px;
+    display:flex;
+    z-index: 100000;
+    transform:translateX(-100%);
+    border: 1px solid #ddd;
+}
+.note-visibility-toggle-container .visibility_toggle_row label{
+    margin: 1px 10px;
+}
+.note-list .token-row-button.share span.material-icons {
+    font-size: 21px;
+}
+.avtt-context-background{
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0);
+    z-index: 10000;
 }
 
 .row-chapter {
@@ -3920,7 +3972,8 @@ input.condition-duration-input {
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
+    box-sizing: border-box;
+}   
 
 #conditions-flyout li span:not(.condition-lock) {
     flex-shrink: 1;
@@ -4604,8 +4657,8 @@ h3.no-bottom-margin-setting ~ .sidebar-panel-header-explanation{
     margin-bottom:20px;
 }
 .token-image-modal-footer-select-wrapper select {
-    min-width: 35%;
-    max-width: 35%;
+    min-width: 34%;
+    max-width: 34%;
 }
 .footer-input-wrapper {
     width: 100%;
@@ -4678,11 +4731,13 @@ div#importer_area>div>div:first-of-type {
     top: 0 !important;
     left: 0 !important;
     float: left !important;
-    width: 90px !important;
-    height: 90px !important;
-    margin: 5px !important;
+    margin: 2px !important;
     position: relative !important;
     opacity: 1 !important;
+}
+#token-change-image-modal .example-token{
+    width:90px;
+    height:90px;
 }
 .custom-token-image-item.ui-draggable-dragging {
     width: auto;
@@ -4945,8 +5000,8 @@ button.block-send-to-game-log span {
 .sidebar-token-options-flyout-container {
     width: 400px;
     max-height: 90vH;
-    padding: 5px;
-    overflow: scroll;
+    padding: 10px;
+    overflow: auto;
     background-color: rgb(235, 241, 245);
 }
 #scenes-panel .sidebar-list-item-row.scene-item .scene-item-footer {
@@ -5052,17 +5107,15 @@ button.block-send-to-game-log span {
 .sidebar-list-item-row-details {
     text-overflow: ellipsis;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    color: #10161a;
+    display: block;
     flex-grow: 1;
+    color: #10161a;
     margin-left: 8px;
     margin-right: 8px;
     line-height: 1.4;
     font-family: Roboto, "Open Sans", Helvetica, sans-serif;
     text-align: left;
     white-space: nowrap;
-    width: 0px;
 }
 .sidebar-list-item-row-details div {
     display: flex;
@@ -5145,7 +5198,32 @@ button.block-send-to-game-log span {
 .note-text ul{
     padding-inline-start: 40px;
 }
+.note-text{
+    position: relative;
+    height: 100%;
+}
 
+.note-text iframe.journal-site-embed{
+    display:block;
+    position:absolute;
+    width:100%;
+    height:100%;
+    top: 0px;
+}
+.note-text iframe.journal-site-embed {
+    top: 0px;
+    height: 100%;
+    border: none;
+}
+.body-rpgcharacter-sheet .note-text{
+    top: 0px;
+}
+.body-rpgcharacter-sheet .note-pin {
+    transform: translateY(43px);
+}
+.body-rpgcharacter-sheet .note-text>p:first-of-type{
+    margin:0px;
+}
 .sidebar-list-item-row.player-row {
     height: 120px;
     transition: height 250ms linear;
@@ -5321,8 +5399,13 @@ button.token-row-button.token-row-edit-encounter{
     flex: auto;
 }
 #token-configuration-modal .sidebar-panel-body{
-    min-height:300px;
-    max-height:500px;
+    min-height: 265px;
+    max-height: 265px;
+    padding: 0px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    overflow-x: hidden;
 }
 #token-configuration-modal{
     height: unset;
@@ -5710,7 +5793,7 @@ span.exhaustion-pip.last{
     opacity: 0;
     color: #fff;
 }
-.body-rpgcampaign .chat-text-wrapper.sidebar-hover-text:before  {
+.body-rpgcampaign:not(.encounter-builder-page) .chat-text-wrapper.sidebar-hover-text:before  {
     bottom:35px;
 }
 .chat-text-wrapper.sidebar-hover-text:hover:before {
@@ -6528,7 +6611,9 @@ div#selectedTokensBorderRotationGrabberConnector,
 .journal-button svg{
     padding: 2px 1px 2px 0px;
 }
-    
+.body-rpgcharacter-sheet .popout-button.journal-button {
+    top: 6px;
+}
 
 #combat_tracker_inside #endplayerturn{
     pointer-events: none;
@@ -7124,21 +7209,21 @@ input.max_hp[disabled]{
 }
 
 /*one button*/
-.encounter-builder-app :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(1) {
+.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(1) {
     margin-right:60px;
 }
 
 /* two buttons */
-.encounter-builder-app :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(2) ~ button:last-of-type {
+.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(2) ~ button:last-of-type {
     margin-right:30px;
 }
 
 /* three buttons */
-.encounter-builder-app :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(3) ~ button:last-of-type {
+.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(3) ~ button:last-of-type {
     margin-right:0px;
 }
 /* four buttons */
-.encounter-builder-app :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(4) ~ button:last-of-type {
+.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(4) ~ button:last-of-type {
 
     margin-right:0px;
 }
@@ -8248,18 +8333,18 @@ button#changeTokenImage:before{
     border-radius: 50%;
     color: #fff;
     display: flex;
-    align-items: center;
-    justify-content: center;
     background: #1c1c1c;
     container-type: inline-size;
-    align-content: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
 }
 .duration-badge.expired span{
     color: #F00;
 }
 .duration-badge span{
-    font-size: 70cqw;
+    font-size: 110cqw;
+    line-height: 100%;
 }
 
 .button-loading::after {
@@ -8325,6 +8410,12 @@ button#changeTokenImage:before{
 }
 .sp-palette-container {
     min-width: 176px;
+}
+.mfp-wrap{
+    z-index: 1000000 !important;
+}
+[role='dialog'] .note .note-text {
+    min-height: 450px;
 }
 #combat_area tr.CTToken:before{
     content:  '???';
@@ -8705,7 +8796,7 @@ div.note[id^="ui-id"] {
     width: 100% !important;
     padding: 0px !important;
     max-height: calc(100% - 33px) !important;
-
+    position: unset;
 }
 
 .tooltip-body-description-text.note-text img{
@@ -8738,7 +8829,9 @@ div.note[id^="ui-id"] .mce-listbox button{
 div.note[id^="ui-id"] .mce-btn button {
     padding: 1px 4px;
 }
-
+.ui-dialog{
+    padding: 0px !important;
+}
 .ui-dialog .ui-dialog-titlebar .ui-dialog-title {
     line-height: 18px;
 }
@@ -8851,6 +8944,11 @@ div.note[id^="ui-id"] .mce-btn button {
     font-size:12px;
     min-width:65px;
 }
+.sidebar-flyout .token-image-modal-footer-select-wrapper input.styled-number-input {
+    position:absolute;
+    right: 25px;
+    width: 50px;
+}
 .peerCursorPosition {
     height: 16px;
     width: 16px;
@@ -8907,9 +9005,13 @@ input[name='upsq'] {
 
 /*Start note ddb styling*/
 button.journal-view-button.journal-button {
-    top: 5px;
+    top: 5px !important;
     right: 27px;
-    padding: 2px;
+    padding: 0px;
+}
+button.journal-view-button.journal-button img {
+    height: 14px;
+    opacity: 0.6;
 }
 :root .note-text{
     --theme-page-fg-color: #242527;
@@ -9285,7 +9387,7 @@ button.journal-view-button.journal-button {
 /** END TEMP new .text--quote-box type **/
 
 
-.note-text h6, {
+.note-text h6 {
     font-size: 14px !important;
     font-weight: bold !important;
 }
@@ -9416,17 +9518,6 @@ button.journal-view-button.journal-button {
     border-image-source: var(--theme-read-aloud-border,url(https://media.dndbeyond.com/ddb-compendium-client/146117d0758df55ed5ff299b916e9bd1.png))
 }
 
-.note-text iframe.journal-site-embed{
-    display:block;
-    position:absolute;
-    width:100%;
-    height:100%;
-    top: 0px;
-}
-
-.visibility-container ~ .note-text iframe.journal-site-embed{
-    top: 42px;
-}
 
 
 :root .custom-stat-block{
@@ -9796,7 +9887,7 @@ button.journal-view-button.journal-button {
 /** END TEMP new .text--quote-box type **/
 
 
-.custom-stat-block h6, {
+.custom-stat-block h6 {
     font-size: 14px !important;
     font-weight: bold !important;
 }
@@ -10007,10 +10098,7 @@ button.resistanceButton.qrm_buttons_bar span {
     justify-content: center;
     position:relative;
 }
-[class*="glc-game-log"] .qrm_name_line{
-    max-width:;
 
-}
 [class*="glc-game-log"] span.save-fail{
     color: #A00;
 }
@@ -10977,6 +11065,9 @@ button#editAnimations {
     width: 50px;
     margin: 1px !important;
 }
+.ui-selectmenu-menu.ui-front{
+    z-index: 100000000 !important;
+}
 .ui-selectmenu-menu .ui-menu-item-wrapper .ui-menu-item {
     height: 24px;
     width: 24px;
@@ -10992,9 +11083,7 @@ button#editAnimations {
 #qrm_apply_conditions-button{
     width: 26% !important;
 }
-.ui-front {
-    z-index: 50010 !important;
-}
+
 .ui-selectmenu-text{
     top: 1px;
     position: relative;
@@ -11990,12 +12079,12 @@ div#playlistFields {
 
 .more-info,.RPGMonster-listing .more-info,.RPGMagicItem-listing .more-info,.ihomebrewable-listing .more-info,.RPGSpell-listing .more-info,.IGear-listing .more-info,.RPGFeat-listing .more-info,.RPGBackground-listing .more-info,.RPGSubclass-listing .more-info {
     position: relative;
-    top: -10px;
-    background-color: #fff;
+    top: -10px !important;
+    background-color: #fff !important;
     border: none;
-    width: calc(100% - 2px);
+    width: calc(100% - 2px) !important;
     margin: 0 auto;
-    padding: 5px 5px 0
+    padding: 5px 5px 0 !important;
 }
 
 
@@ -14040,56 +14129,56 @@ button#displayedDiceFormulaExit:hover {
 
 @font-face {
     font-family: 'Scala Sans Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansOffc-Bold.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansOffc-Bold.ttf") format("truetype");
     font-weight: bold;
     font-style: normal
 }
 
 @font-face {
     font-family: 'Scala Sans Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansOffc.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansOffc.ttf") format("truetype");
     font-weight: normal;
     font-style: normal
 }
 
 @font-face {
     font-family: 'Scala Sans Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansOffc-BoldIta.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansOffc-BoldIta.ttf") format("truetype");
     font-weight: bold;
     font-style: italic
 }
 
 @font-face {
     font-family: 'Scala Sans Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansOffc-Ita.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansOffc-Ita.ttf") format("truetype");
     font-weight: normal;
     font-style: italic
 }
 
 @font-face {
     font-family: 'Scala Sans SC Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansScOffc.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansScOffc.ttf") format("truetype");
     font-weight: normal;
     font-style: normal
 }
 
 @font-face {
     font-family: 'Scala Sans SC Offc';
-    src: url("https://www.dndbeyond.com//fonts/ScalaSansScOffc-Bold.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/ScalaSansScOffc-Bold.ttf") format("truetype");
     font-weight: bold;
     font-style: normal
 }
 
 @font-face {
     font-family: 'MrsEavesSmallCaps';
-    src: url("https://www.dndbeyond.com//fonts/MrsEavesSmallCaps.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/MrsEavesSmallCaps.ttf") format("truetype");
     font-weight: 100;
     font-style: normal
 }
 
 @font-face {
     font-family: 'DearSarahPro';
-    src: url("https://www.dndbeyond.com//fonts/DearSarahPro.ttf") format("truetype");
+    src: url("https://www.dndbeyond.com/fonts/DearSarahPro.ttf") format("truetype");
     font-weight: 100;
     font-style: normal
 }

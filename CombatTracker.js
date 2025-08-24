@@ -88,7 +88,7 @@ function adjust_condition_duration(token, amt) {
 
 function adjust_reaction_condition(token){
 	token.options.custom_conditions = token.options.custom_conditions.filter(d=> d.name !='Reaction Used');
-	$(`#tokens .token[data-id='${token.options.id}'] .conditions [id='Reaction Used']`).remove();
+	$(`:is(#tokens, #combat_area_carousel, #combat_area) :is(.token[data-id='${token.options.id}'], tr[data-target='${token.options.id}']) .conditions [id='Reaction Used']`).remove();
 }
 
 function init_combat_tracker(){
@@ -385,13 +385,14 @@ function init_combat_tracker(){
 
 				delete window.TOKEN_OBJECTS[currentTarget].options.current;
 				delete window.TOKEN_OBJECTS[currentTarget].options.round;
-				window.TOKEN_OBJECTS[currentTarget].update_and_sync();
+				window.TOKEN_OBJECTS[currentTarget].place_sync_persist();
+				window.TOKEN_OBJECTS[currentTarget].build_conditions(current, true);
 			}
 			if(window.TOKEN_OBJECTS[newTarget] != undefined){
 				window.TOKEN_OBJECTS[newTarget].options.current = true;
 				window.TOKEN_OBJECTS[newTarget].options.round = window.ROUND_NUMBER;
 				adjust_reaction_condition(window.TOKEN_OBJECTS[newTarget]);
-				window.TOKEN_OBJECTS[newTarget].update_and_sync();
+				window.TOKEN_OBJECTS[newTarget].place_sync_persist();
 				let combatSettingData = getCombatTrackersettings();
 				let group = false;
 				if(window.TOKEN_OBJECTS[newTarget].options.combatGroupToken){
@@ -449,14 +450,15 @@ function init_combat_tracker(){
 			if(window.TOKEN_OBJECTS[currentTarget] != undefined){
 				delete window.TOKEN_OBJECTS[currentTarget].options.current;
 				delete window.TOKEN_OBJECTS[currentTarget].options.round;
-				window.TOKEN_OBJECTS[currentTarget].update_and_sync();
+				window.TOKEN_OBJECTS[currentTarget].place_sync_persist();;
 			}
 			if(window.TOKEN_OBJECTS[newTarget] != undefined){
 				adjust_age(window.TOKEN_OBJECTS[newTarget], 1)
 				adjust_condition_duration(window.TOKEN_OBJECTS[newTarget], 1)
 				window.TOKEN_OBJECTS[newTarget].options.current = true;
 				window.TOKEN_OBJECTS[newTarget].options.round = window.ROUND_NUMBER;
-				window.TOKEN_OBJECTS[newTarget].update_and_sync();
+				window.TOKEN_OBJECTS[newTarget].place_sync_persist();
+				window.TOKEN_OBJECTS[newTarget].build_conditions(prev, true);
 				let combatSettingData = getCombatTrackersettings();
 				let group = false;
 				if(window.TOKEN_OBJECTS[newTarget].options.combatGroupToken){
@@ -927,7 +929,7 @@ function openCombatTrackerSettings(){
 
 
 	$("#scene_selector").attr('disabled', 'disabled');
-	dialog = $(`<div id='edit_dialog'></div>`);
+	const dialog = $(`<div id='edit_dialog'></div>`);
 	dialog.css('background', "url('/content/1-0-1487-0/skins/waterdeep/images/mon-summary/paper-texture.png')");
 
 
@@ -1720,7 +1722,7 @@ function ct_load(data=null){
 	data=$.parseJSON(localStorage.getItem(itemkey));
 	if(data !== undefined && data !== null){
 		if(!(data[0]['already-loaded'])){
-			for(let i in data){
+			for(let i=0; i<data.length; i++){
 				if (data[i]['data-target'] === 'round'){
 					window.ROUND_NUMBER = data[i]['round_number'];
 					document.getElementById('round_number').value = window.ROUND_NUMBER;
