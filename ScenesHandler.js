@@ -278,12 +278,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 				window.CURRENT_SCENE_DATA.vpps = Math.abs(ppsy);
 				window.CURRENT_SCENE_DATA.offsetx = Math.abs(offsetx);
 				window.CURRENT_SCENE_DATA.offsety = Math.abs(offsety);
-				if(window.CURRENT_SCENE_DATA.gridType && window.CURRENT_SCENE_DATA.gridType != 1){
-					window.CURRENT_SCENE_DATA.scaleAdjustment = {
-						x: 1 + adjustmentSliders.x/10,
-						y: 1 + adjustmentSliders.y/10
-					}
-				}
+				
 				if($("#edit_dialog").length != 0){
 					$('#squaresWide').val(`${$('#scene_map').width()/window.CURRENT_SCENE_DATA.hpps}`)
 					$('#squaresTall').val(`${$('#scene_map').height()/window.CURRENT_SCENE_DATA.vpps}`)					
@@ -292,7 +287,15 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 					$('input[name="offsetx"]').attr('data-prev-value', window.CURRENT_SCENE_DATA.offsetx);
 					$('input[name="offsety"]').attr('data-prev-value', window.CURRENT_SCENE_DATA.offsety);
 				}
-
+				if(window.CURRENT_SCENE_DATA.gridType && window.CURRENT_SCENE_DATA.gridType != 1){
+					window.CURRENT_SCENE_DATA.scaleAdjustment = {
+						x: 1 + (adjustmentSliders.x / 50),
+						y: 1 + (adjustmentSliders.y / 50)
+					}
+				}
+				else {
+					delete window.CURRENT_SCENE_DATA.scaleAdjustment;
+				}
 				let width
 				if (window.ScenesHandler.scene.upscaled == "1")
 					width = 2;
@@ -461,6 +464,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 		$('#scene_map_container').css('background', '#fff');
 		for (let i in window.TOKEN_OBJECTS) {
 			delete window.TOKEN_OBJECTS[i];
+			delete window.ON_SCREEN_TOKENS[i]
 		}
 		window.lineOfSightPolygons = {};
 
@@ -701,7 +705,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 
 	build_scenes(source_keyword, chapter_keyword, callback) {
 		let self = this;
-		console.log("cerco scene source: " + source_keyword + " | chapter: " + chapter_keyword);
+
 		//let chapter_url='https://www.dndbeyond.com/sources/'+source_keyword+'/'+chapter_keyword;
 		let chapter_url = self.sources[source_keyword].chapters[chapter_keyword].url;
 		console.log("checking for scenes in " + chapter_url);
@@ -756,7 +760,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 			}
 
 			const mapButtonDetails = {};
-			const mapButtons = iframe.contents().find(".map-button");
+			const mapButtons = iframe.contents().find(".map-button, .map-button-circle");
 			const frameBody = iframe.contents().find('body');
 			mapButtons.each(function(){
 				const id = this.id;
@@ -794,7 +798,7 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 				let id = $(this).attr('id');
 				if (typeof id == typeof undefined)
 					return;
-				let img1 = $(this).find(".compendium-image-center, .compendium-image-left, .compendium-image-right, .compendium-center-banner-img").attr("href") || $(this).children('img').attr('src');
+				let img1 = $(this).find(".compendium-image-center, .compendium-image-left, .compendium-image-right, .compendium-center-banner-img").attr("href") || $(this).children('img').attr('src') ||$(this).find('.map-nav-container').children('img').attr('src');
 
 				let links = $(this).find("figcaption a");
 				let player_map = '';
@@ -857,20 +861,21 @@ class ScenesHandler { // ONLY THE DM USES THIS OBJECT
 						}
 					}
 				}	
-				self.sources[source_keyword].chapters[chapter_keyword].scenes.push({
-					id: id,
-					uuid: source_keyword + "/" + chapter_keyword + "/" + id,
-					title: title,
-					dm_map: dm_map,
-					player_map: player_map ? player_map : thumb,
-					player_map_is_video: "0",
-					dm_map_is_video: "0",
-					thumb: thumb,
-					scale: "100",
-					dm_map_usable: dm_map ? "1" : '0',
-					tokens: tokens,
-					notes: notes
-				});
+				if (!self.sources[source_keyword].chapters[chapter_keyword].scenes.some(d => d.uuid == `${source_keyword}/${chapter_keyword}/${id}`) )
+					self.sources[source_keyword].chapters[chapter_keyword].scenes.push({
+						id: id,
+						uuid: source_keyword + "/" + chapter_keyword + "/" + id,
+						title: title,
+						dm_map: dm_map,
+						player_map: player_map ? player_map : thumb,
+						player_map_is_video: "0",
+						dm_map_is_video: "0",
+						thumb: thumb,
+						scale: "100",
+						dm_map_usable: dm_map ? "1" : '0',
+						tokens: tokens,
+						notes: notes
+					});
 			});
 
 			// COMPENDIUM IMAGES

@@ -12,6 +12,50 @@ cached_open5e_items = {};
 
 
 
+function avttTokensGetThumbnailPrefix() {
+    if (typeof avttGetThumbnailPrefix === "function") {
+        return avttGetThumbnailPrefix();
+    }
+    const rawId =
+        typeof window !== "undefined" && window && typeof window.PATREON_ID === "string" && window.PATREON_ID
+            ? window.PATREON_ID
+            : "anonymous";
+    const sanitizedId = String(rawId).replace(/[\\/]/g, "_");
+    return `thumbnails_${sanitizedId}/`;
+}
+
+function avttTokensApplyThumbnailPrefix(path) {
+    if (typeof avttApplyThumbnailPrefixToAboveBucket === "function") {
+        return avttApplyThumbnailPrefixToAboveBucket(path);
+    }
+    if (typeof path !== "string") {
+        return path;
+    }
+    const rewritten = path.replace(/^(above-bucket-not-a-url\/([^/]+)\/)(.*)$/i, (match, bucketPrefix, userSegment, rest) => {
+        const sanitizedUser = String(userSegment || "anonymous").replace(/[\\\/]/g, "_") || "anonymous";
+        const thumbnailFolder = `thumbnails_${sanitizedUser}`;
+        const remaining = rest
+            .replace(/^thumbnails_[^/]*\//i, "")
+            .replace(/^thumbnails\//i, "")
+            .replace(/^\/+/, "");
+        const base = `${bucketPrefix}${thumbnailFolder}`;
+        return remaining ? `${base}/${remaining}` : `${base}/`;
+    });
+    if (rewritten !== path) {
+        return rewritten;
+    }
+    const thumbnailPrefix = avttTokensGetThumbnailPrefix();
+    const cleanedPrefix = thumbnailPrefix.replace(/\/+$/, "");
+    return path.replace(/^(above-bucket-not-a-url\/.*?\/)(.*)$/i, (match, bucketPrefix, rest) => {
+        const remaining = rest
+            .replace(/^thumbnails_[^/]*\//i, "")
+            .replace(/^thumbnails\//i, "")
+            .replace(/^\/+/, "");
+        const base = `${bucketPrefix}${cleanedPrefix}`;
+        return remaining ? `${base}/${remaining}` : `${base}/`;
+    });
+}
+
 async function getOpen5e(results = [], search = ''){
     let ddbMonsterTypes = {
         1: 'Aberration',
@@ -249,27 +293,7 @@ function find_builtin_token(fullPath) {
     return found;
 }
 
-function backfill_mytoken_folders() {
-    mytokens.forEach(myToken => {
-        if (myToken.folderPath !== RootFolder.Root.path) {
-            // we split the path and backfill empty every folder along the way if needed. This is really important for folders that hold subfolders, but not items
-            let parts = myToken.folderPath.split("/");
-            let backfillPath = "";
-            parts.forEach(part => {
-                let fullBackfillPath = sanitize_folder_path(`${backfillPath}/${part}`);
-                if (fullBackfillPath !== RootFolder.Root.path && !mytokensfolders.find(fi => sanitize_folder_path(`${fi.folderPath}/${fi.name}`) === fullBackfillPath)) {
-                    // we don't have this folder yet so add it
-                    let newFolder = { folderPath: sanitize_folder_path(backfillPath), name: part, collapsed: true };
-                    console.log("adding folder", newFolder);
-                    mytokensfolders.push(newFolder);
-                } else {
-                    console.log("not adding folder", fullBackfillPath);
-                }
-                backfillPath = fullBackfillPath;
-            });
-        }
-    });
-}
+
 
 /**
  * iterates over all the token sources and replaces window.tokenListItems with new objects.
@@ -287,7 +311,6 @@ function rebuild_token_items_list() {
         playersFolder.rootId = 'playersFolder';
     }
 
-    backfill_mytoken_folders(); // just in case we're missing any folders
 
     // Players
     let tokenItems = window.pcs
@@ -558,7 +581,7 @@ function init_tokens_panel() {
     tokensPanel.updateHeader("Tokens");
     add_expand_collapse_buttons_to_header(tokensPanel, true);
 
-    let searchInput = $(`<input name="token-search" type="search" style="width:96%;margin:2%" placeholder="search tokens">`);
+    let searchInput = $(`<input name="token-search" type="search" style="width:93%;margin:2%" placeholder="search tokens">`);
     searchInput.off("input").on("input", mydebounce(() => {
         let textValue = tokensPanel.header.find("input[name='token-search']").val();
         filter_token_list(textValue);
@@ -577,11 +600,6 @@ function init_tokens_panel() {
 
     window.monsterListItems = []; // don't let this grow unbounded
     window.open5eListItems = [];
-    setTimeout(function () {
-        // give it a couple of second to make sure everything is rendered before fetching the base monsters
-        // this isn't ideal, but the loading screen is up for much longer anyway...
-        filter_token_list("");
-    }, 2000);
 }
 
 
@@ -631,7 +649,7 @@ function redraw_token_list(searchTerm, enableDraggable = true, leaveEmpty=false)
             let row = build_sidebar_list_row(item);
 
             if(item.encounterData?.tokenItems != undefined){
-                for(let i=0; i<item.encounterData.tokenItems.length; i++){
+                for(let i in item.encounterData.tokenItems){
                     if(item.encounterData.tokenItems[i].type != 'pc'){
                         if(item.encounterData.tokenItems[i].quantity != undefined){
                             for(let j = 0; j<item.encounterData.tokenItems[i].quantity; j++){
@@ -648,9 +666,8 @@ function redraw_token_list(searchTerm, enableDraggable = true, leaveEmpty=false)
                 }
 
             }
-            console.debug("appending item", item);
-            $(`#${item.parentId} > .folder-item-list`).append(row);
 
+            $(`#${item.parentId} > .folder-item-list`).append(row);
 
             // find_html_row_from_path(item.folderPath, list).find(` > .folder-item-list`).append(row);
         });
@@ -667,10 +684,21 @@ function redraw_token_list(searchTerm, enableDraggable = true, leaveEmpty=false)
             if (enableDraggable === true && !item.isTypeEncounter()) {
                 enable_draggable_token_creation(row);
             }
-            console.debug("appending item", item);
-            $(`#${item.parentId} > .folder-item-list`).append(row);
+
+            if ($(`#${item.parentId}`).length) {
+                $(`#${item.parentId} > .folder-item-list`).append(row);
+                return;
+            }
+            if(item.isTypeMyToken()){
+                $(`#myTokensFolder > .folder-item-list`).append(row);
+                item.parentId = "myTokensFolder";
+                const customization = find_token_customization(item.type, item.id)
+                customization.parentId = item.parentId;
+                return;
+            }
             // find_html_row_from_path(item.folderPath, list).find(` > .folder-item-list`).append(row);
         });
+    
 
     update_pc_token_rows();
     inject_encounter_monsters();
@@ -702,7 +730,11 @@ function get_helper_size(draggedItem){
  * @param html {*|jQuery|HTMLElement} the html that corresponds to an item (like a row in the list of tokens)
  * @param specificImage {string} the url of the image to use. If nothing is provided, an image will be selected at random from the token's specified alternative-images.
  */
-function enable_draggable_token_creation(html, specificImage = undefined) {
+async function enable_draggable_token_creation(html, specificImage = undefined) {
+    if(specificImage && specificImage.startsWith('above-bucket-not-a-url')){
+        specificImage = await getAvttStorageUrl(avttTokensApplyThumbnailPrefix(specificImage))
+    }
+
     html.draggable({
         appendTo: "body",
         zIndex: 100000,
@@ -731,9 +763,20 @@ function enable_draggable_token_creation(html, specificImage = undefined) {
                 let helper = draggedRow.find(".token-image").clone();
                 if (specificImage !== undefined) {
                     helper.attr("src", specificImage);
-                } else {         
-                    helper.attr("src", random_image_for_item(draggedItem));
-                    
+                } else {      
+                    let src = random_image_for_item(draggedItem);
+                    if(draggedItem.type == ItemType.PC){
+                        src = window.all_token_objects?.[draggedItem.id]?.options?.imgsrc || src;
+                    }  
+                    helper.attr("data-src", src);
+                    if (src.startsWith('above-bucket-not-a-url')) {
+                        getAvttStorageUrl(avttTokensApplyThumbnailPrefix(src)).then((url) => {
+                            helper.attr("src", url);
+                        })
+                    }
+                    else{
+                        helper.attr("src", src);
+                    }
                 }
                 helper.addClass("draggable-token-creation");
                 return helper;
@@ -837,7 +880,7 @@ function enable_draggable_token_creation(html, specificImage = undefined) {
                 }
                 let draggedItem = find_sidebar_list_item(draggedRow);
                 let hidden = event.shiftKey ? true : undefined; // we only want to force hidden if the shift key is help. otherwise let the global and override settings handle it
-                let src = $(ui.helper).attr("src");
+                let src = $(ui.helper).attr("data-src");
                 if (ui.helper.attr("data-shape") && ui.helper.attr("data-style")) {
                     src = build_aoe_img_name(ui.helper.attr("data-style"), ui.helper.attr("data-shape"));
                 }
@@ -913,7 +956,19 @@ function update_pc_token_rows() {
                 abilityValue.find(".ability_score").text(a.score);
             });    
             let customizations = find_token_customization(listItem.type, listItem.id);
-            row.find(".token-image").attr('src', (customizations?.tokenOptions?.alternativeImages?.length>0) ? customizations?.tokenOptions?.alternativeImages[0] : pc.image);
+            
+            let rowImage = (customizations?.tokenOptions?.alternativeImages?.length > 0) ? customizations?.tokenOptions?.alternativeImages[0] : pc.image;
+            if (rowImage.startsWith('above-bucket-not-a-url')){
+                getAvttStorageUrl(avttTokensApplyThumbnailPrefix(rowImage), true).then((url) => {
+                    row.find(".token-image").attr('src', url)
+                })
+            }
+            else{
+                row.find(".token-image").attr('src', rowImage)
+            }
+            
+            
+            
             row.find(".pinv-value").text(pc.passiveInvestigation);
             row.find(".pins-value").text(pc.passiveInsight);
             row.find(".walking-value").text(speed_from_pc_object(pc));
@@ -1001,7 +1056,7 @@ function update_pc_token_rows() {
  */
 
 
-function create_and_place_token(listItem, hidden = undefined, specificImage= undefined, eventPageX = undefined, eventPageY = undefined, disableSnap = false, nameOverride = "", mapPoint=false, extraOptions=undefined) {
+async function create_and_place_token(listItem, hidden = undefined, specificImage= undefined, eventPageX = undefined, eventPageY = undefined, disableSnap = false, nameOverride = "", mapPoint=false, extraOptions=undefined) {
 
 
     if (listItem === undefined) {
@@ -1009,7 +1064,7 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
         return;
     }
 
-    if (listItem.isTypeFolder() || listItem.isTypeEncounter()) {
+    if (listItem.isTypeFolder() || listItem.isTypeEncounter()) {{tokenStyleSelect: "definitelyNotAToken"}
 
         let tokensToPlace = [];
 
@@ -1021,7 +1076,7 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
                 .filter(item => item.folderPath === fullPath);
 
             if(listItem.encounterData?.tokenItems != undefined){
-                for(let i=0; i<listItem.encounterData.tokenItems.length; i++){
+                for(let i in listItem.encounterData.tokenItems){
                     if(listItem.encounterData.tokenItems[i].type != 'pc'){
                         if(listItem.encounterData.tokenItems[i].quantity != undefined){
                             for(let j = 0; j<listItem.encounterData.tokenItems[i].quantity; j++){
@@ -1162,9 +1217,11 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             options.id = listItem.sheet;
             if(window.all_token_objects[options.id] != undefined){           
                 options = {...options, ...window.all_token_objects[options.id].options}
-                if(specificImage)
-                    options.imgsrc = chosenImage;
+                if (specificImage) { 
+                    options = { ...options, ...options.alternativeImagesCustomizations[specificImage], imgsrc: chosenImage };
+                }
             }
+          
             tokenSizeSetting = options.tokenSize;
             tokenSize = parseInt(tokenSizeSetting);
             if (tokenSizeSetting === undefined || typeof tokenSizeSetting !== 'number') {
@@ -1176,12 +1233,10 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             } else {
                 options.tokenSize = tokenSize;
             }
-            options.hitPointInfo = pc.hitPointInfo || {
-                current: 0,
-                maximum: 0,
-                temp: 0
-            };
-            options.armorClass = pc.armorClass;
+            if(pc){
+                options.hitPointInfo = pc.hitPointInfo;
+                options.armorClass = pc.armorClass;
+            }
             options = {...options, ...foundOptions, name: listItem.name};
             break;
         case ItemType.Monster:
@@ -1414,11 +1469,38 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             options.customInit = newInit
         }
 
+        let newAC = $(searchText).find('.custom-ac.custom-stat').text();
 
-        if($(searchText).find('table.abilities-saves, table.stat-table').length>0){
-             let physicalStats = $(searchText).find('table.abilities-saves.physical, table.stat-table.physical');
-             let mentalStats = $(searchText).find('table.abilities-saves.mental, table.stat-table.mental');
-             options.customStat = {
+        if(newAC == ''){
+            let match = searchText.matchAll(/(Armor Class|ac)[\s\S]*?[\s>]([0-9]+)[<\.\s]/gi).next()
+            if(match.value != undefined && match.value[2] != undefined){
+                newAC = match.value[2]
+            }
+        }
+
+        options.armorClass = (newAC) ? newAC : options.armorClass;
+
+        let pcURL = $(searchText).find('.custom-pc-sheet.custom-stat').text();
+        if (pcURL) { 
+            try{
+                const charURLparts = pcURL.match(/.*?\/characters\/([0-9]+)(\/.*?)?/i);
+                const charDetails  = await DDBApi.fetchCharacterDetails([charURLparts[1]]);
+                options = $.extend(true, {}, charDetails[0], options);
+                options.customStat = options.abilities;
+                if(!options.customInit){
+                    options.customInit = options.initiativeBonus;
+                }
+                delete options.abilities;
+            }
+            catch{
+                showErrorMessage(`Failed to fetch character data from DDB for url: ${pcURL}; It's possible the url is incorrect or you do not have access to the character`);
+            }
+        }
+        
+        if ($(searchText).find('table.abilities-saves, table.stat-table').length > 0) {
+            let physicalStats = $(searchText).find('table.abilities-saves.physical, table.stat-table.physical');
+            let mentalStats = $(searchText).find('table.abilities-saves.mental, table.stat-table.mental');
+            options.customStat = {
                 '0': {
                     mod: physicalStats.find('tr:nth-of-type(1) td:nth-of-type(2)').text(),
                     save: physicalStats.find('tr:nth-of-type(1) td:nth-of-type(3)').text()
@@ -1446,9 +1528,9 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             }
         }
 
-        if(options.customStat == undefined){
+        if (options.customStat == undefined) {
             let match = searchText.matchAll(/STR[<\s][\s\S]+?\(([+-][0-9]+)\)[\s\S]+?\(([+-][0-9]+)\)[\s\S]+?\(([+-][0-9]+)\)[\s\S]+?\(([+-][0-9]+)\)[\s\S]+?\(([+-][0-9]+)\)[\s\S]+?\(([+-][0-9]+)\)/gi).next()
-            if(match.value != undefined){
+            if (match.value != undefined) {
                 const str = match.value[1] != undefined ? match.value[1] : '+0'
                 const dex = match.value[2] != undefined ? match.value[2] : '+0'
                 const con = match.value[3] != undefined ? match.value[3] : '+0'
@@ -1456,7 +1538,7 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
                 const wis = match.value[5] != undefined ? match.value[5] : '+0'
                 const cha = match.value[6] != undefined ? match.value[6] : '+0'
 
-                options.customStat ={
+                options.customStat = {
                     '0': {
                         mod: str
                     },
@@ -1485,8 +1567,8 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             let matchWisSave = searchText.matchAll(/Saving Throw[\s\S]+?wis[\s]?([+-][0-9]+)?/gi).next()
             let matchChaSave = searchText.matchAll(/Saving Throw[\s\S]+?cha[\s]?([+-][0-9]+)?/gi).next()
 
-            
-            if(options.customStat == undefined){
+
+            if (options.customStat == undefined) {
                 options.customStat = {
                     '0': {
                         mod: '+0'
@@ -1515,18 +1597,6 @@ function create_and_place_token(listItem, hidden = undefined, specificImage= und
             options.customStat[4]['save'] = (matchWisSave.value && matchWisSave.value[1] != undefined) ? matchWisSave.value[1] : options.customStat[4]['mod'];
             options.customStat[5]['save'] = (matchChaSave.value && matchChaSave.value[1] != undefined) ? matchChaSave.value[1] : options.customStat[5]['mod'];
         }
-
-        let newAC = $(searchText).find('.custom-ac.custom-stat').text();
-
-        if(newAC == ''){
-            let match = searchText.matchAll(/(Armor Class|ac)[\s\S]*?[\s>]([0-9]+)[<\.\s]/gi).next()
-            if(match.value != undefined && match.value[2] != undefined){
-                newAC = match.value[2]
-            }
-        }
-
-
-        options.armorClass = (newAC) ? newAC : options.armorClass;
         options.monster = 'customStat'
     }
     if(foundOptions.color != undefined){
@@ -1977,9 +2047,9 @@ function register_token_row_context_menu() {
                     }
                 }
             }
-            if(rowItem.isTypeMyToken()){
+            if(rowItem.isTypeMyToken() || rowItem.isTypeBuiltinToken() || rowItem.isTypeDDBToken()){
                 menuItems["duplicateMyToken"] = {
-                    name: 'Duplicate',
+                    name: rowItem.isTypeMyToken()  ? 'Duplicate' : 'Copy to My Tokens',
                     callback: function(itemKey, opt, originalEvent) {
                         let itemToPlace = find_sidebar_list_item(opt.$trigger);
                         duplicate_my_token(itemToPlace);
@@ -2100,52 +2170,93 @@ function create_player_folder_inside(listItem) {
  * Creates a "My Tokens" folder within another "My Tokens" folder
  * @param listItem {SidebarListItem} The folder to create a new folder within
  */
-function create_mytoken_folder_inside(listItem) {
+function create_mytoken_folder_inside(listItem, options = {}) {
     if (!listItem.isTypeFolder() || !listItem.fullPath().startsWith(RootFolder.MyTokens.path)) {
         console.warn("create_mytoken_folder_inside called with an incorrect item type", listItem);
         return;
     }
 
-    let newFolderName = "New Folder";
-    let newFolderCount = window.TOKEN_CUSTOMIZATIONS
-        .filter(tc => tc.tokenType === ItemType.Folder && tc.name().startsWith(newFolderName))
-        .length;
-    if (newFolderCount > 0) {
-        newFolderName += ` ${newFolderCount + 1}`;
+    const { name: desiredName, skipModal = false, skipDidChange = false, skipPersist = false, onCreated } = typeof options === "object" && options !== null ? options : {};
+
+    let newFolderName;
+    if (typeof desiredName === "string" && desiredName.trim()) {
+        const baseName = desiredName.trim();
+        const siblingNames = window.TOKEN_CUSTOMIZATIONS
+            .filter(tc => tc.tokenType === ItemType.Folder && tc.parentId === listItem.id)
+            .map(tc => (typeof tc.name === "function" ? tc.name() : tc.tokenOptions?.name || "").toLowerCase());
+        newFolderName = baseName;
+        let suffix = 2;
+        while (siblingNames.includes(newFolderName.toLowerCase())) {
+            newFolderName = `${baseName} ${suffix}`;
+            suffix += 1;
+        }
+    } else {
+        newFolderName = "New Folder";
+        let newFolderCount = window.TOKEN_CUSTOMIZATIONS
+            .filter(tc => tc.tokenType === ItemType.Folder && tc.parentId === listItem.id && tc.name().startsWith(newFolderName))
+            .length;
+        if (newFolderCount > 0) {
+            newFolderName += ` ${newFolderCount + 1}`;
+        }
     }
     let newFolder = TokenCustomization.Folder(uuid(), listItem.id, RootFolder.MyTokens.id, { name: newFolderName });
+    if(skipPersist){
+        window.TOKEN_CUSTOMIZATIONS.push(newFolder);
+        return newFolder;
+    }
+    
+    
     persist_token_customization(newFolder, function(didSucceed, errorType) {
         if (didSucceed) {
-                did_change_mytokens_items();
+                if (!skipDidChange) {
+                    did_change_mytokens_items();
+                }
                 let newListItem = window.tokenListItems.find(li => li.type === ItemType.Folder && li.id === newFolder.id);
-                display_folder_configure_modal(newListItem);
-                expand_all_folders_up_to_item(newListItem);
+                if (newListItem) {
+                    if (!skipModal) {
+                        display_folder_configure_modal(newListItem);
+                    }
+                    if (!skipDidChange) {
+                        expand_all_folders_up_to_item(newListItem);
+                    }
+                }
+                if (typeof onCreated === "function") {
+                    onCreated(newListItem, newFolder);
+                }
         } else {
             showError(errorType, "create_mytoken_folder_inside failed to create a new folder");
         }
     });
+    return newFolder;
 }
 
 function delete_mytokens_folder_and_everything_in_it(listItem) {
+    build_import_loading_indicator('Deleting Folder and Contents');
     console.log("delete_mytokens_folder_and_everything_in_it about to delete all tokens with parentId", listItem.id);
-    delete_token_customization_by_parent_id(listItem.id, function (deletedChildren, deletedChildrenErrorType) {
-        if (deletedChildren) {
-            console.log("delete_mytokens_folder_and_everything_in_it successfully deleted all children. about to delete the folder with id", listItem.id);
-            delete_token_customization_by_type_and_id(listItem.type, listItem.id, function (deletedFolder, deletedFolderErrorType) {
+    setTimeout(() => {
+        delete_token_customization_by_parent_id(listItem.id, function (deletedChildren, deletedChildrenErrorType) {
+            if (deletedChildren) {
+                console.log("delete_mytokens_folder_and_everything_in_it successfully deleted all children. about to delete the folder with id", listItem.id);
+                delete_token_customization_by_type_and_id(listItem.type, listItem.id, function (deletedFolder, deletedFolderErrorType) {
+                    did_change_mytokens_items();
+                    expand_all_folders_up_to_item(listItem);
+                    if (deletedFolder) {
+                        console.log("delete_mytokens_folder_and_everything_in_it successfully deleted the folder with id", listItem.id);
+                    } else {
+                        showError(deletedFolderErrorType, "delete_mytokens_folder_and_everything_in_it failed to delete the folder with id", listItem.id);
+                    }
+                    $("body>.import-loading-indicator").remove();
+                });
+            } else {
                 did_change_mytokens_items();
                 expand_all_folders_up_to_item(listItem);
-                if (deletedFolder) {
-                    console.log("delete_mytokens_folder_and_everything_in_it successfully deleted the folder with id", listItem.id);
-                } else {
-                    showError(deletedFolderErrorType, "delete_mytokens_folder_and_everything_in_it failed to delete the folder with id", listItem.id);
-                }
-            });
-        } else {
-            did_change_mytokens_items();
-            expand_all_folders_up_to_item(listItem);
-            showError(deletedChildrenErrorType, "delete_mytokens_within_folder failed to delete token customizations");
-        }
-    });
+                showError(deletedChildrenErrorType, "delete_mytokens_within_folder failed to delete token customizations");
+                $("body>.import-loading-indicator").remove();
+            }
+        })
+    }, 0);
+
+   
 }
 
 function move_mytokens_to_parent_folder_and_delete_folder(listItem, callback) {
@@ -2179,7 +2290,7 @@ function move_mytokens_to_parent_folder_and_delete_folder(listItem, callback) {
  * Creates a new "My Token" object within a folder
  * @param listItem {SidebarListItem} the folder item to create a token in
  */
-function create_token_inside(listItem, tokenName = "New Token", tokenImage = '', type='', options = undefined, statBlock = undefined) {
+function create_token_inside(listItem, tokenName = "New Token", tokenImage = '', type='', options = undefined, statBlock = undefined, skipDidChange = false, skipPersist = false) {
     if (!listItem.isTypeFolder() || !listItem.fullPath().startsWith(RootFolder.MyTokens.path)) {
         console.warn("create_token_inside called with an incorrect item type", listItem);
         return;
@@ -2228,8 +2339,13 @@ function create_token_inside(listItem, tokenName = "New Token", tokenImage = '',
         window.JOURNAL.persist();
         customization.tokenOptions.statBlock = customization.id;
     }
-
+    if (skipPersist){
+        window.TOKEN_CUSTOMIZATIONS.push(customization);
+        return
+    }
     persist_token_customization(customization, function (didSucceed, error) {
+        if (skipDidChange)
+            return;
         console.log("create_token_inside created a new item", customization);
         did_change_mytokens_items();
         const newItem = window.tokenListItems.find(li => li.type === ItemType.MyToken && li.id === customization.id);
@@ -2337,11 +2453,12 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
     listItem.rootId = listItem.rootId;
     // close any that are already open just to be safe
     let sidebarPanel;
+    let name = listItem.name;
     if(!selectedTokenImage && !redrawPanel){ // we just want to redraw the panel options not the images since we selected a token image to edit
         close_sidebar_modal();
         sidebarPanel = new SidebarPanel("token-configuration-modal");
+        
         display_sidebar_modal(sidebarPanel);
-        let name = listItem.name;
 
         sidebarPanel.updateHeader(name, "", "When placing tokens, one of these images will be chosen at random. Right-click an image for more options.");
         redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, undefined, selectedTokenImage);
@@ -2360,7 +2477,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         sidebarPanel = redrawPanel;
     }
    
-     let targetOptions = customization.tokenOptions;
+    let targetOptions = customization.tokenOptions;
     if(selectedTokenImage){
         if(customization.tokenOptions.alternativeImagesCustomizations == undefined)
             customization.tokenOptions.alternativeImagesCustomizations = {};
@@ -2400,7 +2517,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
             token = window.TOKEN_OBJECTS[id]
             if (token){
                 token.options.alternativeImages = customization.tokenOptions.alternativeImages;
-                token.sync($.extend(true, {}, window.TOKEN_OBJECTS[id].options))
+                token.sync(await $.extend(true, {}, token.options))
             }
         }
         if(['.mp4', '.webm', '.m4v'].some(d => type.includes(d))){
@@ -2416,11 +2533,11 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
             let alt = $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).attr('alt')
             let video = false;
             if(customization?.tokenOptions?.videoToken == true || (['.mp4', '.webm', '.m4v'].some(d => newImageUrl.includes(d)))){
-                rowImage = $(`<video disableRemotePlayback muted loading='lazy' class='token-image video-listing' alt='${alt}'>`);
+                rowImage = $(`<video disableRemotePlayback muted loading='lazy' data-src='${newImageUrl}' class='token-image video-listing' alt='${alt}'>`);
                 video = true;
             } 
             else{
-                rowImage = $(`<img loading='lazy' class='token-image' alt='${alt}'>`);
+                rowImage = $(`<img loading='lazy' data-src='${newImageUrl}' class='token-image' alt='${alt}'>`);
             }      
             $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).replaceWith(rowImage);
             updateTokenSrc(newImageUrl, rowImage, video);
@@ -2430,7 +2547,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         $('#token-configuration-modal .token-image-modal-remove-all-button').show();
         inputWrapper.find(".token-image-modal-url-label-add-wrapper > .token-image-modal-url-label-wrapper > .token-image-modal-footer-title").text(determineLabelText());
     };
-
+    window.currentAddImageUrl = addImageUrl;
     // MyToken name input handler
     const rename = async function(newName) {
         if (newName !== undefined && newName.length > 0) {
@@ -2458,9 +2575,18 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
                addImageUrl(links[i].link, links[i].type)
             }    
         }, 'multiple')
+        const avttButton = createCustomAvttChooser('', function (links) {
+            for (let i = 0; i < links.length; i++) {
+                addImageUrl(links[i].link)
+            }  
+        }, [avttFilePickerTypes.VIDEO, avttFilePickerTypes.IMAGE]);
         dropboxButton.toggleClass('token-row-button', true);
         oneDriveButton.toggleClass('token-row-button', true);
-        inputWrapper.append(dropboxButton, oneDriveButton);
+        avttButton.toggleClass('token-row-button', true);
+        
+        inputWrapper.append(dropboxButton, avttButton, oneDriveButton);
+
+        
     }
 
 
@@ -2488,11 +2614,11 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
             
             let video=false;
             if(isVideoValue || (['.mp4', '.webm', '.m4v'].some(d => listingImage.includes(d)))){
-                rowImage = $(`<video disableRemotePlayback muted loading='lazy' class='token-image video-listing' alt='${alt}'>`);
+                rowImage = $(`<video disableRemotePlayback muted data-src='${listingImage}' loading='lazy' class='token-image video-listing' alt='${alt}'>`);
                 video = true;
             } 
             else{
-                rowImage = $(`<img loading='lazy' class='token-image' alt='${alt}'>`);
+                rowImage = $(`<img loading='lazy' data-src='${listingImage}' class='token-image' alt='${alt}'>`);
             }      
             $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).replaceWith(rowImage);         
             updateTokenSrc(listingImage, rowImage, video);
@@ -3030,13 +3156,35 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
     inputWrapper.append(tokenOptionsButton);
     inputWrapper.append(`<br />`);
 }
+function rgbaToHex(input) {
+    if (typeof input !== 'string') throw new Error('Expected rgba(...) string');
+    const str = input.trim();
+    if(str.match(/^#/gi))
+        return str;
+    // Match rgb/rgba with decimals and optional spaces
+    const m = str.matchAll(/\(\s*([\d\.]+)\s*,\s*([\d\.]+)\s*,\s*([\d\.]+)\s*(,\s*([\d\.]+)\s*)?\)$/gi)?.next()?.value
+    if (!m) throw new Error('Invalid rgb/rgba string');
 
+    const r = Math.min(255, Math.max(0, Math.round(Number(m[1]))));
+    const g = Math.min(255, Math.max(0, Math.round(Number(m[2]))));
+    const b = Math.min(255, Math.max(0, Math.round(Number(m[3]))));
+    const a = m[4] !== undefined ? Math.min(1, Math.max(0, Number(m[5]))) : 1;
+
+    const toHex = (n) => n.toString(16).padStart(2, '0').toUpperCase();
+
+    if (a >= 1) {
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+    const aByte = Math.round(a * 255);
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(aByte)}`;
+}
 /// colorChangeCallback(borderColor, eventType)
 function build_token_border_color_input(initialColor, colorChangeCallback) {
     if (typeof colorChangeCallback !== "function") {
         console.warn("build_token_border_color_input was called without a callback function");
         return;
     }
+    initialColor = rgbaToHex(initialColor);
     // border color
     let borderColorInput = $(`<input class="border-color-input" type="color" value="${initialColor}"/>`);
     let borderColorWrapper = $(`
@@ -3152,7 +3300,7 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
         console.warn("redraw_token_images_in_modal was called without proper items");
         return;
     }
-    let currentlySelectedToken = $('.example-token.selected .div-token-image')?.attr('src');
+    let currentlySelectedToken = $('.example-token.selected .div-token-image')?.attr('data-src');
     let modalBody = sidebarPanel.body
     modalBody.empty();
     modalBody.off('click.select').on('click.select', function(e){
@@ -3160,7 +3308,7 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
         if($(e.target).closest('.example-token').length > 0){
             $(e.target).closest('.example-token')?.toggleClass('selected', true);
         } 
-        let src = $(e.target).closest('.example-token')?.find('.div-token-image')?.attr('src');
+        let src = $(e.target).closest('.example-token')?.find('.div-token-image')?.attr('data-src');
 
         display_token_configuration_modal(listItem, placedToken, src, sidebarPanel)
     })
@@ -3293,7 +3441,7 @@ function build_alternative_image_for_modal(image, options, placedToken, listItem
  * @param listItem {SidebarListItem|undefined} the item the modal represents
  * @param placedToken {Token|undefined} the token on the scene
  */
-function decorate_modal_images(sidebarPanel, listItem, placedToken) {
+async function decorate_modal_images(sidebarPanel, listItem, placedToken) {
     if (listItem === undefined && placedToken === undefined) {
         console.warn("decorate_modal_images was called without a listItem or a placedToken");
         return;
@@ -3303,7 +3451,7 @@ function decorate_modal_images(sidebarPanel, listItem, placedToken) {
     for (let i = 0; i < items.length; i++) {
         let combinedOptions = options;
         let item = $(items[i]);
-        let imgsrc = item.find(".div-token-image").attr("src");
+        let imgsrc = item.find(".div-token-image, .token-image").attr("data-src");
         if(options.alternativeImagesCustomizations != undefined && options.alternativeImagesCustomizations[imgsrc] != undefined){
             combinedOptions = {
                 ...options,
@@ -3327,32 +3475,74 @@ function persist_my_tokens() {
     localStorage.removeItem("MyTokensFolders");
 }
 
-function persist_folders_remembered_state() {
+function persist_folders_remembered_state(collapsed) {
     if (window.tokenListItems === undefined) return;
     let rememberedFolderState = {};
-    window.tokenListItems
-        .filter(item => item.isTypeFolder())
-        .concat(tokens_rootfolders)
-        .concat(window.sceneListFolders)
-        .forEach(f => {
-            rememberedFolderState[f.id] = f.collapsed;
-        });
-    localStorage.setItem("FolderRememberedState", JSON.stringify(rememberedFolderState));
+    if(collapsed != undefined){
+        if (collapsed.token === true || collapsed.token === false) {
+            window.sceneListFolders.forEach(f => {
+                rememberedFolderState[f.id] = f.collapsed;
+            });
+            window.tokenListItems
+                .filter(item => item.isTypeFolder()).forEach(f => {
+                    f.collapsed = collapsed.token;
+                    rememberedFolderState[f.id] = collapsed.token;
+                })
+            tokens_rootfolders.forEach(f => {
+                f.collapsed = collapsed.token;
+                rememberedFolderState[f.id] = collapsed.token;
+            });
+
+        }
+        if (collapsed.scene === true || collapsed.scene === false) {
+            window.sceneListFolders.forEach(f => {
+                f.collapsed = collapsed.scene;
+                rememberedFolderState[f.id] = collapsed.scene;
+            });
+            window.tokenListItems
+                .filter(item => item.isTypeFolder())
+                .concat(tokens_rootfolders).forEach(f => {
+                    rememberedFolderState[f.id] = f.collapsed;
+                });
+        }
+    }
+    else{
+        window.tokenListItems
+            .filter(item => item.isTypeFolder())
+            .concat(tokens_rootfolders)
+            .concat(window.sceneListFolders).forEach(f => {
+                rememberedFolderState[f.id] = f.collapsed;
+            });
+    }
+    localStorage.setItem(`FolderRememberedState-${window.gameId}`, JSON.stringify(rememberedFolderState));
 }
 
 function update_token_folders_remembered_state() {
-    if (!window.tokenListItems || !window.sceneListFolders) {
-        return; // still starting up
-    }
 
-    let items = window.tokenListItems
-        .filter(item => item.isTypeFolder())
-        .concat(tokens_rootfolders)
-        .concat(window.sceneListFolders);
 
-    if(localStorage.getItem('FolderRememberedState') != null) {
-        let rememberedStates = JSON.parse(localStorage.getItem('FolderRememberedState'));
-        items.forEach(item => {
+    let folderItems = window.tokenListItems.filter(item => item.isTypeFolder())
+        
+    const state = localStorage.getItem(`FolderRememberedState-${window.gameId}`)
+    if (state != null) {
+        let rememberedStates = JSON.parse(state);
+        if (window.tokenListItems) {
+            folderItems.forEach(item => {
+                let state = rememberedStates[item.id];
+                if (state === true || state === false) {
+                    item.collapsed = state;
+                }
+            });
+        
+            tokens_rootfolders.forEach(item => {
+                let state = rememberedStates[item.id];
+                if (state === true || state === false) {
+                    item.collapsed = state;
+                }
+            });
+        }
+        if (!window.sceneListFolders)
+            return
+        window.sceneListFolders.forEach(item => {
             let state = rememberedStates[item.id];
             if (state === true || state === false) {
                 item.collapsed = state;
@@ -3694,7 +3884,7 @@ function display_monster_filter_modal() {
         filter_observer.observe(mutation_target,mutation_config);
         console.groupEnd()
     });
-    iframe.attr("src", `https://www.dndbeyond.com/encounters/${window.EncounterHandler.avttId}/edit`);
+    iframe.attr("src", `https://www.dndbeyond.com/encounter-builder`);
 
 }
 
@@ -3835,46 +4025,82 @@ function register_custom_token_image_context_menu() {
                     name: "Remove",
                     callback: async function (itemKey, opt, originalEvent) {
                         let selectedItem = $(opt.$trigger[0]);
-                        let imgSrc = selectedItem.find(".token-image").attr("src");
-                        if(tokenChangeImage){
-                            imgSrc = selectedItem.attr("src");
+                        let imgSrc = selectedItem.find(".token-image").attr("data-src");
+                        if (tokenChangeImage) {
+                            imgSrc = selectedItem.attr("data-src");
                         }
-                        
-                        let listItem = find_sidebar_list_item(opt.$trigger);
-                        
+
 
                         // if they are removing the image that is set on a token, ask them if they really want to remove it
-                        let placedTokenId = selectedItem.attr("data-token-id");
+                        let placedTokenId = selectedItem.attr("data-token-id") || selectedItem.attr("data-id") || selectedItem.attr("id");
                         let placedToken = window.TOKEN_OBJECTS[placedTokenId];
+
+                        window.CURRENTLY_SELECTED_TOKENS.push(placedTokenId);
+                        allTokenIds = [...new Set(window.CURRENTLY_SELECTED_TOKENS)];
+
                         if(placedToken !== undefined){
-                            placedToken.options.alternativeImages = placedToken.options.alternativeImages.filter(d => d !== imgSrc);
+                            for(id of allTokenIds){
+                                const token = window.TOKEN_OBJECTS[id];
+                                if(!token)
+                                    continue;
+                                token.removeAlternativeImage(imgSrc);
+
+                            }
                         }
                         if (placedToken !== undefined && placedToken.options.imgsrc === imgSrc) {
                             let continueRemoving = confirm("This image is set on the token. Removing it will remove the image on the token as well. Are you sure you want to remove this image?")
                             if (!continueRemoving) {
                                 return;
                             }
-                            placedToken.options.imgsrc = "";
-                            placedToken.place_sync_persist();
-                        }
-
-                        if (!tokenChangeImage && listItem?.isTypeMyToken() || listItem?.isTypeMonster() || listItem?.isTypePC() || listItem?.isTypeOpen5eMonster()) {
-                            let customization = find_token_customization(listItem.type, listItem.id);
-                            if (!customization) {
-                                showError("register_custom_token_image_context_menu Remove failed to find a token customization object matching listItem: ", listItem);
-                                return;
+                            for (id of allTokenIds) {
+                                const token = window.TOKEN_OBJECTS[id];
+                                if (!token)
+                                    continue;
+                                token.options.imgsrc = "";
+                                token.place_sync_persist();
                             }
-                            await customization.removeAlternativeImage(imgSrc);
-                            persist_token_customization(customization, function(){
-                                let listingImage = (customization.tokenOptions?.alternativeImages && customization.tokenOptions?.alternativeImages[0] != undefined) ? customization.tokenOptions?.alternativeImages[0] : listItem.image;     
-                                $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).attr('src', listingImage);
-                                redraw_token_images_in_modal(window.current_sidebar_modal, listItem, placedToken);
-                            });
-     
-                        } else if (!tokenChangeImage) {
-                            showError("register_custom_token_image_context_menu Remove attempted to remove a custom image with an invalid type. listItem:", listItem);
-                            return;
+                            
                         }
+                        const persistListItem = async function(listItem){
+                            if(!listItem)
+                                return;
+                            if ((listItem?.isTypeMyToken() || listItem?.isTypeMonster() || listItem?.isTypePC() || listItem?.isTypeOpen5eMonster())) {
+                                let customization = find_token_customization(listItem.type, listItem.id);
+                                if (!customization) {
+                                    showError("register_custom_token_image_context_menu Remove failed to find a token customization object matching listItem: ", listItem);
+                                    return;
+                                }
+                                await customization.removeAlternativeImage(imgSrc);
+                                persist_token_customization(customization, function () {
+                                    let listingImage = (customization.tokenOptions?.alternativeImages && customization.tokenOptions?.alternativeImages[0] != undefined) ? customization.tokenOptions?.alternativeImages[0] : listItem.image;
+                                    if (listingImage.startsWith('above-bucket-not-a-url')) {
+                                        getAvttStorageUrl(avttTokensApplyThumbnailPrefix(listingImage), true).then((url) => {
+                                            $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).attr('src', url);
+                                        })
+                                    }
+                                    else {
+                                        $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).attr('src', listingImage);
+                                    }
+
+
+                                });
+                            } 
+
+                        }
+                        
+                        for(id of allTokenIds){
+                            const token = window.TOKEN_OBJECTS[id];
+                            if (!token)
+                                continue;
+                            let listItem = list_item_from_token(token);
+                            persistListItem(listItem);  
+                        }
+                        const listItem = find_sidebar_list_item(opt.$trigger)
+                        persistListItem(listItem);
+                        if (!tokenChangeImage)
+                            redraw_token_images_in_modal(window.current_sidebar_modal, listItem);
+
+
                         selectedItem.remove();
                     }
                 };  
@@ -3917,11 +4143,11 @@ function build_remove_all_images_button(sidebarPanel, listItem, placedToken) {
             let alt = $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).attr('alt')
             let video = false;
             if(customization?.tokenOptions?.videoToken == true || (['.mp4', '.webm', '.m4v'].some(d => listingImage.includes(d)))){
-                rowImage = $(`<video disableRemotePlayback muted loading='lazy' class='token-image video-listing' alt='${alt}'>`);
+                rowImage = $(`<video disableRemotePlayback muted loading='lazy' data-src='${listingImage}' class='token-image video-listing' alt='${alt}'>`);
                 video = true;
             } 
             else{
-                rowImage = $(`<img loading='lazy' class='token-image' alt='${alt}'>`);
+                rowImage = $(`<img loading='lazy' data-src='${listingImage}' class='token-image' alt='${alt}'>`);
             }      
             $(`.sidebar-list-item-row[id='${listItem.id}'] .token-image`).replaceWith(rowImage);
 
@@ -3945,12 +4171,17 @@ function find_token_options_for_list_item(listItem) {
 function duplicate_my_token(listItem){
     if (!listItem) return {};
     let foundOptions = $.extend(true, {}, find_token_options_for_list_item(listItem));
+    if(foundOptions.image){
+        foundOptions.imgsrc = foundOptions.image;
+        delete foundOptions.image;
+    }
     delete foundOptions.id;
+    const folder = listItem.isTypeMyToken() ? find_sidebar_list_item_from_path(listItem.folderPath) : find_sidebar_list_item_from_path(RootFolder.MyTokens.path)
     if(window.JOURNAL.notes[listItem.id] != undefined){
-        create_token_inside(find_sidebar_list_item_from_path(listItem.folderPath), undefined, undefined, undefined, foundOptions, window.JOURNAL.notes[listItem.id].text);
+        create_token_inside(folder, undefined, undefined, undefined, foundOptions, window.JOURNAL.notes[listItem.id].text);
     }
     else{
-        create_token_inside(find_sidebar_list_item_from_path(listItem.folderPath), undefined, undefined, undefined, foundOptions);
+        create_token_inside(folder, undefined, undefined, undefined, foundOptions);
     }
 }
 function create_token_copy_inside(listItem, open5e = false){
@@ -4028,56 +4259,85 @@ function display_change_image_modal(placedToken) {
 
     /// update the modal header
     sidebarPanel.updateHeader(placedToken.options.name, "Token Images", "Click an image below to update your token or enter a new image URL at the bottom.");
-
+    let allTokenIds = [placedToken.options.id]
+   
+    if (window.CURRENTLY_SELECTED_TOKENS.includes(placedToken.options.id)){
+        window.CURRENTLY_SELECTED_TOKENS.push(placedToken.options.id);
+        allTokenIds = [...new Set(window.CURRENTLY_SELECTED_TOKENS)]
+    }
+    
     /// draw tokens in the body
-    let listItem = list_item_from_token(placedToken);
-    let alternativeImages = placedToken.options.imgsrc != '' ? [placedToken.options.imgsrc] : [];
-    if (placedToken.options.alternativeImages) {
-        alternativeImages = alternativeImages.concat(placedToken.options.alternativeImages);
-    }
-    if (listItem?.alternativeImages) {
-        alternativeImages = alternativeImages.concat(listItem.alternativeImages);
-    }
-    if (listItem != undefined){
-        let customization = find_token_customization(listItem.type, listItem.id);
-        if (customization) {
-            alternativeImages = alternativeImages.concat(customization.alternativeImages());
+    for (id of allTokenIds){
+        const token = window.TOKEN_OBJECTS[id];
+        if(!token)
+            continue;
+        let listItem = list_item_from_token(token);
+        let alternativeImages = token.options.imgsrc != '' ? [token.options.imgsrc] : [];
+        if (token.options.alternativeImages) {
+            alternativeImages = alternativeImages.concat(token.options.alternativeImages);
         }
-    }
-    alternativeImages = [...new Set(alternativeImages)]; // clear out any duplicates
-    console.log("display_change_image_modal", alternativeImages);
-    alternativeImages.forEach(imgUrl => {
-        let html;
-        let video = false;
-        if(placedToken?.options.videoToken == true || (['.mp4', '.webm', '.m4v'].some(d => imgUrl.includes(d)))){
-            html = $(`<video disableRemotePlayback muted autoplay='false' class="example-token" data-token-id='${placedToken?.options.id}' loading="lazy" alt="alternative image" />`);  
-            video = true;   
-        } else{
-            html = $(`<img class="example-token" loading="lazy" data-token-id='${placedToken?.options.id}' alt="alternative image" />`);
+        if (listItem?.alternativeImages) {
+            alternativeImages = alternativeImages.concat(listItem.alternativeImages);
         }
-        updateImgSrc(imgUrl, html, video);
-        // the user is changing their token image, allow them to simply click an image
-        // we don't want to allow drag and drop from this modal
-        html.on("click", function (imgClickEvent) {
+        if (listItem != undefined){
+            let customization = find_token_customization(listItem.type, listItem.id);
+            if (customization) {
+                alternativeImages = alternativeImages.concat(customization.alternativeImages());
+            }
+        }
+        alternativeImages = [...new Set(alternativeImages)]; // clear out any duplicates
+        console.log("display_change_image_modal", alternativeImages);
+        alternativeImages.forEach(imgUrl => {
+            if (!imgUrl || sidebarPanel.body.find(`.example-token[data-src='${imgUrl}']`).length>0)
+                return;
+            let html;
+            let video = false;
+            if(token?.options.videoToken == true || (['.mp4', '.webm', '.m4v'].some(d => imgUrl.includes(d)))){
+                html = $(`<video disableRemotePlayback muted autoplay='false' data-src='${imgUrl}'  class="example-token" data-token-id='${token?.options.id}' loading="lazy" alt="alternative image" />`);  
+                video = true;   
+            } else{
+                html = $(`<img class="example-token" loading="lazy" data-src='${imgUrl}' data-token-id='${token?.options.id}' alt="alternative image" />`);
+            }
+            updateImgSrc(imgUrl, html, video);
+            // the user is changing their token image, allow them to simply click an image
+            // we don't want to allow drag and drop from this modal
+            html.on("click", function (imgClickEvent) {
 
-            const imgSrc = parse_img(imgUrl);
-            if(placedToken.options.alternativeImagesCustomizations != undefined){
-                placedToken.options ={
-                    ...placedToken.options,
-                    ...placedToken.options.alternativeImagesCustomizations[imgSrc],
-                }
+                const imgSrc = parse_img(imgUrl);
                 const tokenMultiplierAdjustment = (!window.CURRENT_SCENE_DATA.scaleAdjustment) ? 1 : (window.CURRENT_SCENE_DATA.scaleAdjustment.x > window.CURRENT_SCENE_DATA.scaleAdjustment.y) ? window.CURRENT_SCENE_DATA.scaleAdjustment.x : window.CURRENT_SCENE_DATA.scaleAdjustment.y;
                 const hpps = window.CURRENT_SCENE_DATA.hpps * tokenMultiplierAdjustment;
-                const newSize = placedToken.options.tokenSize * hpps
-                placedToken.size(newSize);
-            }
-            placedToken.options.imgsrc = imgSrc;
-           
-            close_sidebar_modal();
-            placedToken.place_sync_persist();
+                for (id of allTokenIds) {
+                    const token = window.TOKEN_OBJECTS[id];
+                    if(token){ 
+                        
+                        if (token.options.alternativeImagesCustomizations != undefined) {
+                            token.options = {
+                                ...token.options,
+                                ...token.options.alternativeImagesCustomizations[imgSrc],
+                            }
+                            const newSize = token.options.tokenSize * hpps
+                            token.size(newSize);
+                        }
+                        token.options.imgsrc = imgSrc; 
+
+                        token.place_sync_persist();
+                    }
+
+
+                    const allToken = window.all_token_objects[id];
+                    if (allToken) {
+                        allToken.options = {
+                            ...token.options
+                        }
+                    }
+                }
+
+                close_sidebar_modal();
+            });
+            sidebarPanel.body.append(html);
         });
-        sidebarPanel.body.append(html);
-    });
+
+    }
 
     // this will be called when the user enters a new url
     const add_token_customization_image = function(imageUrl) {
@@ -4085,66 +4345,117 @@ function display_change_image_modal(placedToken) {
             alert("You cannot use urls starting with data:");
             return;
         }
+        for (id of allTokenIds){
+            const token = window.TOKEN_OBJECTS[id];
+            if(!token)
+                continue;
+            if (!token.options.alternativeImages) {
+                token.options.alternativeImages = [];
+            }
+            if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+            }
+            token.options.imgsrc = parse_img(imageUrl);
+            if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+            }
+
+            token.place_sync_persist();
+        }
        
-        if(!placedToken.options.alternativeImages){
-           placedToken.options.alternativeImages =[];
-        }
-        if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-           placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
-        }
-        placedToken.options.imgsrc = parse_img(imageUrl);
-        if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-            placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
-        }
+
+
         close_sidebar_modal();
-        placedToken.place_sync_persist();
     };
    
     let imageUrlInput = sidebarPanel.build_image_url_input("Use a different image", add_token_customization_image);
     sidebarPanel.inputWrapper.append(imageUrlInput);
     //dropbox button
     const dropboxOptions = dropBoxOptions(function(links){
-        for(let i = 0; i<links.length; i++){
-            if(!placedToken.options.alternativeImages){
-               placedToken.options.alternativeImages =[];
-            }
-            if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-               placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
-            }
-            placedToken.options.imgsrc = parse_img(links[i].link);
-            if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-                placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
+        for (let i = 0; i < links.length; i++) {
+            for (id of allTokenIds) {
+                const token = window.TOKEN_OBJECTS[id];
+                if (!token)
+                    continue;
+                if (!token.options.alternativeImages) {
+                    token.options.alternativeImages = [];
+                }
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+                token.options.imgsrc = parse_img(links[i].link);
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+
+                token.place_sync_persist();
             }
         }
-        close_sidebar_modal();
-        placedToken.place_sync_persist();       
+        close_sidebar_modal();   
     }, true);
     const dropboxButton = createCustomDropboxChooser('', dropboxOptions);
     dropboxButton.toggleClass('token-row-button', true);
 
     const oneDriveButton = createCustomOnedriveChooser('', function(links){
-        for(let i = 0; i<links.length; i++){
-            if(!placedToken.options.alternativeImages){
-               placedToken.options.alternativeImages =[];
+        for (let i = 0; i < links.length; i++) {
+            for (id of allTokenIds) {
+                const token = window.TOKEN_OBJECTS[id];
+                if (!token)
+                    continue;
+                if (!token.options.alternativeImages) {
+                    token.options.alternativeImages = [];
+                }
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+                token.options.imgsrc = parse_img(links[i].link);
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+
+                token.place_sync_persist();
             }
-            if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-               placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
-            }
-            placedToken.options.imgsrc = parse_img(links[i].link);
-            if(!placedToken.options.alternativeImages.includes(placedToken.options.imgsrc)){
-                placedToken.options.alternativeImages = placedToken.options.alternativeImages.concat([placedToken.options.imgsrc])
+        }
+        close_sidebar_modal();   
+    }, 'multiple')
+
+
+    oneDriveButton.toggleClass('token-row-button', true);
+
+    const avttButton = createCustomAvttChooser('', function (links) {
+        for (let i = 0; i < links.length; i++) {  
+            for (id of allTokenIds) {
+                const token = window.TOKEN_OBJECTS[id];
+                if (!token)
+                    continue;
+                if (!token.options.alternativeImages) {
+                    token.options.alternativeImages = [];
+                }
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+                token.options.imgsrc = parse_img(links[i].link);
+                if (!token.options.alternativeImages.includes(token.options.imgsrc)) {
+                    token.options.alternativeImages = token.options.alternativeImages.concat([token.options.imgsrc])
+                }
+
+                token.place_sync_persist();
             }
         }
         close_sidebar_modal();
-        placedToken.place_sync_persist();      
-    }, 'multiple')
-    oneDriveButton.toggleClass('token-row-button', true);
-    sidebarPanel.inputWrapper.append(dropboxButton, oneDriveButton);
+
+    }, [avttFilePickerTypes.VIDEO, avttFilePickerTypes.IMAGE]);
+
+    avttButton.toggleClass('token-row-button', true);
+    
+    sidebarPanel.inputWrapper.append(dropboxButton, avttButton, oneDriveButton);
+
+   
 
     let inputWrapper = sidebarPanel.inputWrapper;
     sidebarPanel.footer.find(`.token-image-modal-add-button`).remove();
     // allow them to use the new url for the placed token without saving the url for all future tokens
-    let onlyForThisTokenButton = $(`<button class="sidebar-panel-footer-button" title="This url will be used for this token only. New tokens will continue to use the images shown above.">Set for this token only</button>`);
+    let onlyForThisTokenButton = $(`<button class="sidebar-panel-footer-button" title="This url will be used for selected tokens only. New tokens will continue to use the images shown above.">Set for selected tokens</button>`);
     onlyForThisTokenButton.on("click", function(event) {
         let imageUrl = $(`input[name='addCustomImage']`)[0].value;
         if (imageUrl !== undefined && imageUrl.length > 0) {
@@ -4153,7 +4464,7 @@ function display_change_image_modal(placedToken) {
     });
     inputWrapper.append(onlyForThisTokenButton);
 
-    inputWrapper.append($(`<div class="sidebar-panel-header-explanation" style="padding:4px;">You can change the image for all tokens of this type by clicking the gear button on the token row in the Tokens tab.</div>`));
+    inputWrapper.append($(`<div class="sidebar-panel-header-explanation" style="padding:4px;">You can preset alternative images by clicking the cogwheel in the token panel and adding them there.</div>`));
 }
 
 const fetch_and_cache_scene_monster_items = mydebounce( () => {
@@ -4361,8 +4672,7 @@ function convert_open5e_monsterData(monsterData){
         }
        
         let convertedSkills = [];
-        Object.entries(monsterData.skills).forEach(([key, value]) => {
-          console.log(`${key}: ${value}`)     
+        Object.entries(monsterData.skills).forEach(([key, value]) => {  
             if(key == "athletics"){
                 convertedSkills.push({skillId: 2, value: value, additionalBonus: null})
             }
@@ -4509,7 +4819,6 @@ function convert_open5e_monsterData(monsterData){
 
         monsterData.movements = [];
         Object.entries(monsterData.speed).forEach(([key, value]) => {
-          console.log(`${key}: ${value}`)
           key = key.replace(/\b[a-z]/g, function(letter) {
             return letter.toUpperCase();
           });
@@ -5179,3 +5488,6 @@ function getPersonailityTrait(){
     return tokenPersonality[Math.floor(Math.random() * 638) + 1];
 
 }
+
+
+

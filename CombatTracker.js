@@ -533,8 +533,7 @@ function init_combat_tracker(){
 			scroll: false,
 			containment: "#windowContainment",
 			start: function () {
-				$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-				$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 			},
 			stop: function () {
 				$('.iframeResizeCover').remove();
@@ -546,8 +545,7 @@ function init_combat_tracker(){
 		handles: "all",
 		containment: "#windowContainment",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -840,7 +838,13 @@ function update_carousel_combat_tracker(){
 	    }
 
 	    table.find(`tr[data-target='${firstTokenId}']`).toggleClass('first-in-round', true);
+		const images = table.find(`tr td:first-of-type img[data-id^='above-bucket-not-a-url']`);
 
+		for(let image of images){
+			image = $(image);
+			const imageId = image.attr('data-id');
+			updateImgSrc(imageId, image, image.is('video'), true)
+		}
 
 
 	    if(window.DM){
@@ -862,6 +866,8 @@ function update_carousel_combat_tracker(){
 	    	
 	    }
     }
+
+
 
     
 }
@@ -1142,8 +1148,8 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 	else{
 		img = $("<img width=35 height=35 class='Avatar_AvatarPortrait__2dP8u'>");
 	}
-
-	updateImgSrc(token.options.imgsrc, img, video);
+	img.attr('data-id', token.options.imgsrc);
+	updateImgSrc(token.options.imgsrc, img, video, true, update_carousel_combat_tracker);
 	img.css('border','3px solid '+token.options.color);
 	if (token.options.hidden == true){
 		img.css('opacity','0.5');
@@ -1230,7 +1236,7 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 					window.TOKEN_OBJECTS[token.options.id].update_and_sync()
 				}
 				debounceCombatReorder();
-			}, token.options.itemId, token.options.id, adv, dis);
+			}, token.options.itemId, token.options.id,  adv, dis);
 		}
 	}
 
@@ -1521,9 +1527,10 @@ function ct_current_turn() {
 function ct_persist(){
 	let data= [];
 	$('#combat_area tr').each( function () {			
-			let optionsClone = $.extend(true, {}, window.all_token_objects[$(this).attr("data-target")].options);
-			optionsClone.alternativeImages = [];
-
+		let optionsClone = $.extend(true, {}, window.all_token_objects[$(this).attr("data-target")].options);
+		optionsClone.alternativeImages = [];
+		optionsClone.ct_show = $(this).find('.hideFromPlayerCombatButton svg.closedEye[style*="block"]').length == 0;
+		optionsClone.init = $(this).find('input.init').val();
 	  	data.push( {
 			'data-target': $(this).attr("data-target"),
 			'current': ($(this).attr("data-current")=="1"),
@@ -1614,16 +1621,24 @@ function ct_load(data=null){
 			else if(data[i]['data-target'] !== undefined){
 				if (window.all_token_objects[data[i]['data-target']] == undefined) {
 					window.all_token_objects[data[i]['data-target']] = new Token(data[i]['options']);
+					if (window.TOKEN_OBJECTS[data[i]['data-target']]) {
+						window.all_token_objects[data[i]['data-target']].options.alternativeImages = window.TOKEN_OBJECTS[data[i]['data-target']].options.alternativeImages;
+					}
 					window.all_token_objects[data[i]['data-target']].sync = mydebounce(function(options) {				
 						window.MB.sendMessage('custom/myVTT/token', options);
 					}, 300);
 				}
+				const altImages = window.all_token_objects[data[i]['data-target']].options.alternativeImages;
+				const currAltImage = altImages ? [...altImages] : [];
+				
 				window.all_token_objects[data[i]['data-target']].options = data[i]['options'];
-				if(window.all_token_objects[data[i]['data-target']].options.ct_show == true || (window.DM && window.all_token_objects[data[i]['data-target']].options.ct_show !== undefined))
+				window.all_token_objects[data[i]['data-target']].options.alternativeImages = currAltImage;
+				
+				if(data[i].options.ct_show == true || (window.DM && window.all_token_objects[data[i]['data-target']].options.ct_show !== undefined))
 				{
 
 					ct_add_token(window.all_token_objects[data[i]['data-target']],false,true);
-					if([data[i]['data-target']] in window.TOKEN_OBJECTS){
+					if (window.TOKEN_OBJECTS[data[i]['data-target']]){
 						window.TOKEN_OBJECTS[data[i]['data-target']].hp = window.all_token_objects[data[i]['data-target']].baseHp;
 						window.TOKEN_OBJECTS[data[i]['data-target']].maxHp = window.all_token_objects[data[i]['data-target']].maxHp;
 						window.TOKEN_OBJECTS[data[i]['data-target']].tempHp = window.all_token_objects[data[i]['data-target']].tempHp;
@@ -1686,13 +1701,13 @@ function ct_load(data=null){
 			for (tokenID in window.TOKEN_OBJECTS){
 				if(window.TOKEN_OBJECTS[tokenID].options.current != undefined && tokenID != data.current){
 					delete window.TOKEN_OBJECTS[tokenID].options.current;
-					window.TOKEN_OBJECTS[tokenID].update_and_sync();
+					window.TOKEN_OBJECTS[tokenID].place();
 				}
 			}
 			$("#combat_area tr[data-target='"+data.current+"']").attr("data-current","1");
 			if(window.TOKEN_OBJECTS[data.current] != undefined){
 				window.TOKEN_OBJECTS[data.current].options.current = true;
-				window.TOKEN_OBJECTS[data.current].update_and_sync();
+				window.TOKEN_OBJECTS[tokenID].place();
 			}
 			if(window.all_token_objects[data.current] != undefined){
 				if(window.all_token_objects[data.current].isCurrentPlayer() || window.all_token_objects[data.current].options.player_owned){
@@ -1731,7 +1746,6 @@ function ct_load(data=null){
 				}
 			    if(window.TOKEN_OBJECTS[data[i]['data-target']] != undefined){
 			        window.TOKEN_OBJECTS[data[i]['data-target']].options.init = data[i]['init']
-			        window.TOKEN_OBJECTS[data[i]['data-target']].update_and_sync();
 			        if(window.TOKEN_OBJECTS[data[i]['data-target']].ct_show == undefined){
 			        	window.TOKEN_OBJECTS[data[i]['data-target']].ct_show = data[i]['data-ct-show'];
 			        }

@@ -31,13 +31,11 @@ function parse_img(url) {
 		} else if (retval.includes("https://drive.google.com") && !retval.match(/id=([a-zA-Z0-9_-]+)/g)) {
 			const parsed = 'https://drive.google.com/thumbnail?id=' + retval.split('/')[5] +'&sz=w3000';
 			retval = parsed;
-			console.log("parse_img is converting", url, "to", retval);
 			return retval;		
 		} 
 		else if (retval.startsWith("https://drive.google.com") || (retval.includes("https://drive.usercontent.google.com")) && retval.match(/id=([a-zA-Z0-9_-]+)/g)) {
 			const parsed = 'https://drive.google.com/thumbnail?id=' + retval.matchAll(/id=([a-zA-Z0-9_-]+)/g).next().value[1] +'&sz=w3000';
 			retval = parsed;
-			console.log("parse_img is converting", url, "to", retval);
 			return retval;		
 		} 
 		else if(retval.startsWith("https://www.googleapis.com/drive/v3/files/")){ // fix due to 1.5/1.6 beta 
@@ -49,17 +47,16 @@ function parse_img(url) {
 		else if(retval.includes("dropbox.com")){
 			const splitUrl = url.split('dropbox.com');
 			const parsed = `https://dl.dropboxusercontent.com${splitUrl[splitUrl.length-1]}`
-			console.log("parse_img is converting", url, "to", parsed);
 			retval = parsed;
 		}
 		else if(retval.includes("https://1drv.ms/"))
 		{
 			if(retval.split('/')[4].length == 1){
-	      retval = retval;
-	    }
-	    else{
-	      retval = "https://api.onedrive.com/v1.0/shares/u!" + btoa(url) + "/root/content";
-	    }
+				retval = retval;
+			}
+			else{
+				retval = "https://api.onedrive.com/v1.0/shares/u!" + btoa(url) + "/root/content";
+			}
 		}
 		if(retval.includes("discordapp.com")){
 			retval = update_old_discord_link(retval)
@@ -442,7 +439,11 @@ function map_load_error_cb(e) {
 		}
 	}
 	window.LOADING = false
+	remove_loading_overlay();
+	$('.import-loading-indicator').remove();
+	delete window.LOADING;
 	window.MB.loadNextScene();
+	console.groupEnd();
 }
 
 /**
@@ -493,6 +494,7 @@ async function load_scenemap(url, is_video = false, width = null, height = null,
 			height: height,
 			videoId: videoid,
 			playerVars: { 'autoplay': 0, 'controls': 1, 'rel': 0 },
+			host: 'https://www.youtube-nocookie.com',
 			events: {
 				'onStateChange': function(event) {  
 					if (event.data == 0) window.YTPLAYER.seekTo(0); 
@@ -535,6 +537,11 @@ async function load_scenemap(url, is_video = false, width = null, height = null,
 			newmap.width(width);
 			newmap.height(height);		
 		}
+		else if(url.startsWith('above-bucket-not-a-url')){
+			url = await getAvttStorageUrl(url, true);
+			newmap = $(`<img id='scene_map' src='${url}' style='position:absolute;top:0;left:0;z-index:10'>`);
+
+		}
 		else{
 			url = await getGoogleDriveAPILink(url)
 			newmap = $(`<img id='scene_map' src='${url}' style='position:absolute;top:0;left:0;z-index:10'>`);
@@ -566,26 +573,29 @@ async function load_scenemap(url, is_video = false, width = null, height = null,
 		videoVolume = videoVolume * $("#master-volume input").val();
 		
 		if(url.includes('google')){
-	    if (url.startsWith("https://drive.google.com") && url.indexOf("uc?id=") < 0 && url.indexOf("thumbnail?id=") < 0 ) {
-	        const parsed = 'https://drive.google.com/uc?id=' + url.split('/')[5];
-	        const fileid = parsed.split('=')[1];
-	        url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;     
-	    } 
-	    else if (url.startsWith("https://drive.google.com") && url.indexOf("uc?id=") > -1) {
-	        const fileid = url.split('=')[1];
-	        url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;   
-	    }
-	    else if (url.startsWith("https://drive.google.com") && url.indexOf("thumbnail?id=") > -1) {
-	        const fileid = url.split('=')[1].split('&')[0];
-	        url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;   
-	    }
+			if (url.startsWith("https://drive.google.com") && url.indexOf("uc?id=") < 0 && url.indexOf("thumbnail?id=") < 0 ) {
+				const parsed = 'https://drive.google.com/uc?id=' + url.split('/')[5];
+				const fileid = parsed.split('=')[1];
+				url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;     
+			} 
+			else if (url.startsWith("https://drive.google.com") && url.indexOf("uc?id=") > -1) {
+				const fileid = url.split('=')[1];
+				url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;   
+			}
+			else if (url.startsWith("https://drive.google.com") && url.indexOf("thumbnail?id=") > -1) {
+				const fileid = url.split('=')[1].split('&')[0];
+				url = `https://www.googleapis.com/drive/v3/files/${fileid}?alt=media&key=AIzaSyBcA_C2gXjTueKJY2iPbQbDvkZWrTzvs5I`;   
+			}
 		}
 		else if(url.includes('onedrive')){
-	    url = url.replace('embed?', 'download?');
+	    	url = url.replace('embed?', 'download?');
 		}
 		else if(url.includes("https://1drv.ms/"))
 		{
 		  url = "https://api.onedrive.com/v1.0/shares/u!" + btoa(url) + "/root/content";
+		}
+		else if (url.startsWith('above-bucket-not-a-url')) {
+			url = await getAvttStorageUrl(url, true)
 		}
 		let newmap = $(`<video style="${newmapSize} position: absolute; top: 0; left: 0;z-index:10" playsinline autoplay loop data-volume='0.25' onplay="this.volume=${videoVolume/100}" id="scene_map" src="${url}" />`);
 		newmap.off("loadeddata").one("loadeddata", callback);
@@ -983,8 +993,7 @@ function load_monster_stat_iframe(monsterId, tokenId) {
 		handles: "all",
 		containment: "#windowContainment",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -1001,8 +1010,7 @@ function load_monster_stat_iframe(monsterId, tokenId) {
 		scroll: false,
 		containment: "#windowContainment",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -1075,8 +1083,7 @@ function build_draggable_monster_window() {
 		handles: "all",
 		containment: "#windowContainment",
 		start: function() {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function() {
 			$('.iframeResizeCover').remove();
@@ -1093,8 +1100,7 @@ function build_draggable_monster_window() {
 		scroll: false,
 		containment: "#windowContainment",
 		start: function() {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function() {
 			$('.iframeResizeCover').remove();
@@ -1330,7 +1336,7 @@ function init_mouse_zoom() {
 		}
 	}
 	let suppressed = null;
-	function move_pinch(ev, busy) {
+	function move_pinch(ev) {
 		if(ev && touchMode == 2) {
 			ev.preventDefault()
 			ev.stopPropagation();
@@ -1342,30 +1348,33 @@ function init_mouse_zoom() {
 			}
 	        }
         }
-	window.addEventListener('touchstart', start_pinch, {passive: false});
-	window.addEventListener('touchmove', move_pinch, {passive: false});
-	window.addEventListener("touchend", function (e) {
-		if(touchTimeout) clearTimeout(touchTimeout);
-		if (e.touches.length === 0) {
-			touchTimeout = setTimeout(() => {
-				touchMode = 0;
-			}, 100);
-		}
-	});
-        window.addEventListener("touchcancel", function (e) {
-		//still needs to be tested - not sure how to trigger
-		if ((e.touches == undefined || e.touches.length === 0) && touchMode === 2) {
-			console.log("Touch interrupted. Resetting.");
-			touchMode = 0;
-			throttledZoom(start_scale,1); //todo: x,y?
-		}
-	});
 
-	//disable browser gestures (not sure: is there a more subtle way in CSS?)
-	function prevent(e) { e.preventDefault(); }
-	document.addEventListener("gesturestart", prevent);
-	document.addEventListener("gesturechange", prevent);
-	document.addEventListener("gestureend", prevent);
+		document.addEventListener('touchstart', start_pinch, { passive: false });
+		document.addEventListener('touchmove', move_pinch, { passive: false });
+		document.addEventListener("touchend", function (e) {
+			if (touchTimeout) clearTimeout(touchTimeout);
+			if (e.touches.length === 0) {
+				touchTimeout = setTimeout(() => {
+					touchMode = 0;
+				}, 100);
+			}
+		});
+		document.addEventListener("touchcancel", function (e) {
+			//still needs to be tested - not sure how to trigger
+			if ((e.touches == undefined || e.touches.length === 0) && touchMode === 2) {
+				console.log("Touch interrupted. Resetting.");
+				touchMode = 0;
+				throttledZoom(start_scale, 1); //todo: x,y?
+			}
+		});
+
+		//disable browser gestures (not sure: is there a more subtle way in CSS?)
+		function prevent(e) { e.preventDefault(); }
+		document.addEventListener("gesturestart", prevent);
+		document.addEventListener("gesturechange", prevent);
+		document.addEventListener("gestureend", prevent);
+
+
 }
 
 
@@ -1553,8 +1562,8 @@ function minimize_player_window_double_click(titleBar) {
  */
 function frame_z_index_when_click(moveableFrame){
 
-	if(moveableFrame.css('z-index') != 50000) {
-		moveableFrame.css('z-index', 50000);
+	if(moveableFrame.css('z-index') != 90000) {
+		moveableFrame.css('z-index', 90000);
 		$(".moveableWindow, [role='dialog']").not(moveableFrame).each(function() {
 			$(this).css('z-index',($(this).css('z-index')-1));
 		});
@@ -1670,8 +1679,7 @@ function  init_sheet() {
 			handles: "all",
 			containment: "#windowContainment",
 			start: function () {
-				$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-				$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 			},
 			stop: function () {
 				$('.iframeResizeCover').remove();
@@ -1688,8 +1696,7 @@ function  init_sheet() {
 			scroll: false,
 			containment: "#windowContainment",
 			start: function () {
-				$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));
-				$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 			},
 			stop: function () {
 				$('.iframeResizeCover').remove();
@@ -1755,7 +1762,6 @@ function open_player_sheet(sheet_url, closeIfOpen = true, playerName = '') {
 		// This ensures that they are loaded sequentially to avoid any race conditions.
 		let injectScript = function () {
 		    if (scripts.length === 0) {
-		        delete scripts;
 		        return;
 		    }
 		    let nextScript = scripts.shift();
@@ -1903,8 +1909,8 @@ function close_player_sheet()
 		window.character_sheet_observer.disconnect();
 		delete window.character_sheet_observer;
 	}
-	if(!window.DM){
-			observe_character_sheet_changes($('#site-main, .ct-sidebar__portal'));
+	if(!window.DM && !is_spectator_page()){
+		observe_character_sheet_changes($('#site-main, .ct-sidebar__portal'));
 	}
 }
 /**
@@ -2031,25 +2037,30 @@ function init_character_page_sidebar() {
 
 	$(".ct-sidebar__inner").off("click.setCondition").on("click.setCondition", ".set-conditions-button", function(clickEvent) {
 		let conditionName = $(clickEvent.target).parent().find("span").text();
-			$('.ct-combat__statuses-group--conditions .ct-combat__summary-label:contains("Conditions"), .ct-combat-tablet__cta-button:contains("Conditions"), .ct-combat-mobile__cta-button:contains("Conditions")').click();
-			setTimeout(function(){
-				$('.ct-condition-manage-pane').css('visibility', 'hidden');
-				$(`.ct-sidebar__inner .ct-condition-manage-pane__condition-name:contains('${conditionName}') ~ .ct-condition-manage-pane__condition-toggle>[class*='styles_toggle'][aria-pressed="false"]`).click();
-			}, 10)
-			setTimeout(function(){
-				$(`#switch_gamelog`).click();
-			}, 20)
+		$('body').append(`<style id='condition-click'>.ct-condition-manage-pane{visibility:hidden !important;}</style>`);
+		$('.ct-combat__statuses-group--conditions .ct-combat__summary-label:contains("Conditions"), .ct-combat-tablet__cta-button:contains("Conditions"), .ct-combat-mobile__cta-button:contains("Conditions")').click();
+		setTimeout(function(){
+			$('.ct-condition-manage-pane').css('visibility', 'hidden');
+			$(`.ct-sidebar__inner .ct-condition-manage-pane__condition-name:contains('${conditionName}') ~ .ct-condition-manage-pane__condition-toggle>[class*='styles_toggle'][aria-pressed="false"]`).click();
+		}, 30)
+		setTimeout(function(){
+			$(`#switch_gamelog`).click();
+			$("#condition-click").remove();
+		}, 40)
 	});	
 	$(".ct-sidebar__inner").off("click.removeCondition").on("click.removeCondition", ".remove-conditions-button", function(clickEvent) {
 		let conditionName = $(clickEvent.target).parent().find("span").text();
-			$('.ct-combat__statuses-group--conditions .ct-combat__summary-label:contains("Conditions"), .ct-combat-tablet__cta-button:contains("Conditions"), .ct-combat-mobile__cta-button:contains("Conditions")').click();
-			setTimeout(function(){
-				$('.ct-condition-manage-pane').css('visibility', 'hidden');
-				$(`.ct-sidebar__inner .ct-condition-manage-pane__condition-name:contains('${conditionName}') ~ .ct-condition-manage-pane__condition-toggle>[class*='styles_toggle'][aria-pressed="true"]`).click();
-			}, 10)
-			setTimeout(function(){
-				$(`#switch_gamelog`).click();
-			}, 20)
+		$('body').append(`<style id='condition-click'>.ct-condition-manage-pane{visibility:hidden !important;}</style>`);
+
+		$('.ct-combat__statuses-group--conditions .ct-combat__summary-label:contains("Conditions"), .ct-combat-tablet__cta-button:contains("Conditions"), .ct-combat-mobile__cta-button:contains("Conditions")').click();
+		setTimeout(function(){
+			$('.ct-condition-manage-pane').css('visibility', 'hidden');
+			$(`.ct-sidebar__inner .ct-condition-manage-pane__condition-name:contains('${conditionName}') ~ .ct-condition-manage-pane__condition-toggle>[class*='styles_toggle'][aria-pressed="true"]`).click();
+		}, 30)
+		setTimeout(function(){
+			$(`#switch_gamelog`).click();
+			$("#condition-click").remove();
+		}, 40)
 
 	});
 	$(".ct-character-header-info__content").on("click", function(){
@@ -2099,7 +2110,7 @@ function init_ui() {
 
 	// On iOS make sure browser zoom is zero-d out
 	if (isIOS()) { //might also be useful on other mobile. not sure.
-		var meta = document.createElement('meta');
+		const meta = document.createElement('meta');
 		meta.name = "viewport";
 		meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
 		document.getElementsByTagName('head')[0].appendChild(meta);
@@ -2216,7 +2227,7 @@ function init_ui() {
 	weatherLight.css("position", "absolute");
 	weatherLight.css("top", "0");
 	weatherLight.css("left", "0");
-	weatherLight.css("z-index", "10000000");
+	weatherLight.css("z-index", "25");
 
 	const fog = $("<canvas id='fog_overlay'></canvas>");
 	fog.css("top", "0");
@@ -2389,7 +2400,8 @@ function init_ui() {
 		if (curDown) {
 			let scrollOptions = {
 				left: window.scrollX + curXPos - m.pageX,
-				top: window.scrollY + curYPos - m.pageY
+				top: window.scrollY + curYPos - m.pageY,
+				behavior: "instant"
 			}
 			requestAnimationFrame(function(){
 				window.scrollTo(scrollOptions)
@@ -2416,6 +2428,13 @@ function init_ui() {
 			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
 			//return false;
 		}
+		let modal = m.target.closest(".sidebar-modal");
+		if(modal){
+			window.MODALDOWN = true;
+		}
+		else{
+			window.MODALDOWN = false;
+		}
 	}
 
 	// Function separated so it can be dis/enabled
@@ -2423,12 +2442,11 @@ function init_ui() {
 		
 		curDown = false;
 		$("#VTT, #black_layer").css("cursor", "");
-		//remove iframe cover that prevents mouse interaction
-		$('.iframeResizeCover').remove();
+
 		if (event.target.tagName.toLowerCase() !== 'a') {
 			$("#splash").remove(); // don't remove the splash screen if clicking an anchor tag otherwise the browser won't follow the link
 		}
-		if (sidebar_modal_is_open() && event.which === 1) {
+		if (sidebar_modal_is_open() && event.which === 1 && !window.MODALDOWN) {
 			// check if the click was within the modal or within an element that we specifically don't want to close the modal
 			let modal = event.target.closest(".sidebar-modal");
 			let preventSidebarModalClose = event.target.closest(".prevent-sidebar-modal-close");
@@ -2436,6 +2454,8 @@ function init_ui() {
 				close_sidebar_modal();
 			}
 		}
+		//remove iframe cover that prevents mouse interaction
+		$('.iframeResizeCover').remove();
 		let sidebarMonsterStatBlock = $("#monster-details-page-iframe");
 		if (sidebarMonsterStatBlock.length > 0 && !event.target.closest("#monster-details-page-iframe")) {
 			sidebarMonsterStatBlock.remove();
@@ -2481,7 +2501,7 @@ function init_ui() {
 	init_mouse_zoom()
 
 	init_help_menu();
-  hide_or_unhide_scrollbar()
+  	hide_or_unhide_scrollbar()
   
 
 }
@@ -2547,7 +2567,8 @@ function init_zoom_buttons() {
 	if ($("#zoom_buttons").length > 0) {
 		return;
 	}
-	let defaultValues = get_avtt_setting_value('quickToggleDefaults');
+	let defaultValues = get_avtt_setting_value('quickToggleDefaults') || {};
+
 	// ZOOM BUTTON
 	let zoom_section = $("<div id='zoom_buttons' />");
 	const youtube_controls_button = $(`<div id='youtube_controls_button' class='ddbc-tab-options--layout-pill hasTooltip button-icon hideable' data-name='Quick toggle youtube controls'></div>`);
@@ -2791,8 +2812,15 @@ function init_zoom_buttons() {
 				$(".dm-paused-indicator").remove();
 			}
 		});
+		let avttS3FileShare = $(`<div id='aboveFileHostButton' class='ddbc-tab-options--layout-pill hasTooltip button-icon hideable' data-name='AVTT File Hosting'> 
+		<div class="ddbc-tab-options__header-heading">
+				<span class="material-icons button-icon">folder</span>
+		</div></div>
+		`);
+		avttS3FileShare.click(launchFilePicker);
 
-		zoom_section.append(select_locked, ping_center, pause_players);
+		zoom_section.append(avttS3FileShare, select_locked, ping_center, pause_players);
+
 	}
 
 
@@ -2888,15 +2916,17 @@ function init_zoom_buttons() {
 	zoom_section.append(zoom_plus);
 
 	let hide_interface = $(`<div id='hide_interface_button' class='ddbc-tab-options--layout-pill'><div class='ddbc-tab-options__header-heading hasTooltip button-icon' data-name='Unhide interface (shift+h)'><span class='material-icons md-16 button-icon'>visibility</span></div></div>`);
-	hide_interface.click(unhide_interface);
-	hide_interface.css("display", "none");
-	hide_interface.css("position", "absolute");
-	hide_interface.css("opacity", "50%");
-	hide_interface.css("right", "-136px");
+	hide_interface.css({
+		display: "none",
+		position: "absolute",
+		opacity: 0.1,
+		right: '0px',
+		top: "-30px"
+	});
 	zoom_section.append(hide_interface);
 
 	$(".avtt-sidebar-controls").append(zoom_section);
-	if (window.DM) {
+	if (window.DM || is_spectator_page()) {
 		zoom_section.css("right","371px");
 	} else {
 		zoom_section.css("right","420px");
@@ -3169,7 +3199,7 @@ function init_help_menu() {
 					<div id="tab12" class='googledoc bookmark' data-src="https://docs.google.com/document/d/e/2PACX-1vRSJ6Izvldq5c9z_d-9-Maa8ng1SUK2mGSQWkPjtJip0cy9dxAwAug58AmT9zRtJmiUx5Vhkp7hATSt/pub?embedded=true#h.mob2z6z5azn2"></div>
 
 					<div id="tab20">
-						<iframe width="560" height="315" src="https://www.youtube.com/embed/videoseries?list=PLW0tvNe3gIM00xQCReTWi8CPrXBJyDQmG&rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+						<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/videoseries?list=PLW0tvNe3gIM00xQCReTWi8CPrXBJyDQmG&rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 					</div>
 					<div id="tab21">
 						AboveVTT is an open source project. The developers build it in their free time, and rely on users to report and troubleshoot bugs. If you're experiencing a bug, here are a few options: 
@@ -3219,7 +3249,10 @@ function init_help_menu() {
 			$('.tabs-content>div#tab2').show();
 			let src = $(currentTab).attr('data-src');
 			$('.tabs-content>div#tab2').find('iframe').remove();
-			$('.tabs-content>div#tab2').append(`<iframe src='${src}'></iframe>`)
+			$('.tabs-content>div#tab2').append(`<iframe src='${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(src)}'
+						allowfullscreen
+						webkitallowfullscreen
+						mozallowfullscreen></iframe>`)
 		}
 
 		$(currentTab).show();
@@ -3768,7 +3801,7 @@ function is_sidebar_visible() {
  * This will show/hide the sidebar regardless of which page we are playing on.
  */
 function toggle_sidebar_visibility() {
-		if (is_sidebar_visible() || (!window.DM && window.innerWidth < 1024 && $(`[class*='styles_mobileNav']>div`).length==0)) {
+	if (is_sidebar_visible() || (!window.DM && !is_spectator_page() && window.innerWidth < 1024 && $(`[class*='styles_mobileNav']>div`).length==0)) {
 			hide_sidebar();
 		} else {
 			show_sidebar();
@@ -3800,6 +3833,7 @@ function show_sidebar(dispatchResize = true) {
 		$("#sheet").removeClass("sidebar_hidden");
 	}
 	$('canvas.dice-rolling-panel__container, .roll-mod-container').css('--sidebar-width', '340px');
+	$('canvas.streamer-canvas').css('--sidebar-width', '340px');
 	if(dispatchResize)
 		window.dispatchEvent(new Event('resize'));
 	addGamelogPopoutButton()
@@ -3857,7 +3891,6 @@ width=${width},height=${height},left=100,top=100`;
 	$(childWindows[name].document).find('body, head').empty();
 	$(childWindows[name].document).find('body').append(cloneSelector.clone(true,true));
 	$(childWindows[name].document).find('head').append($('link, style').clone());
-	$(childWindows[name].document).find('head').append($('link, style').clone());
 	$(childWindows[name].document).find('a[href^="/"]').each(function() {
         this.href = `https://dndbeyond.com${this.getAttribute("href")}`;
 	});
@@ -3865,6 +3898,7 @@ width=${width},height=${height},left=100,top=100`;
 }
 function popoutGamelogCleanup(){
 	$(childWindows["Gamelog"].document).find("#popoutGamelogCleanup").remove();
+	$(childWindows["Gamelog"].document).find('head').append($('link, style').clone());
 	$(childWindows["Gamelog"].document).find('head').append(`<style id='popoutGamelogCleanup'>
 		body{
 			overflow: hidden !important;
@@ -3896,6 +3930,7 @@ function popoutGamelogCleanup(){
 		}
 	</style>`);
 	$(childWindows["Gamelog"].document).find(".gamelog-button, button[class*='gamelog-button']").click();
+	$(childWindows["Gamelog"].document).find(".sidebar__control-group--lock button").click();
 	removeFromPopoutWindow("Gamelog", ".dice-roller");
 	removeFromPopoutWindow("Gamelog", ".sidebar-panel-content:not('.glc-game-log')");
 	removeFromPopoutWindow("Gamelog", ".chat-text-wrapper");
@@ -3964,6 +3999,7 @@ function hide_sidebar(triggerResize = true) {
 		$("#sheet").addClass("sidebar_hidden");
 	}
 	$('canvas.dice-rolling-panel__container, .roll-mod-container').css('--sidebar-width', '0px');
+	$('canvas.streamer-canvas').css('--sidebar-width', '0px');
 	if(triggerResize)
 		window.dispatchEvent(new Event('resize'));
 }

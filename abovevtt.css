@@ -58,9 +58,27 @@ button#startScreenShare{
     border-radius: 5px;
 }
 
-
+#hide_interface_button{
+    display: none;
+    position: absolute;
+    opacity: 0.1 !important;
+    right: 0px;
+    top: -30px;
+    scale: 0.5;
+}
+#hide_interface_button:hover {
+    scale: 1;
+    opacity: 1 !important;
+}
+div#hide_interface_button [data-name]:after {
+    position: relative;
+    left: unset;
+    right: 40px;
+    top: 15px;
+}
 canvas.dice-rolling-panel__container{
     max-width: calc(100% - var(--sidebar-width, 340px)) !important;
+    z-index: 160000 !important;
 }
 
 .abovevttTempMessage{
@@ -329,6 +347,9 @@ button .ddbc-tab-options__header-heading .menu-option{
 .body-rpgcharacter-sheet div.avtt-sidebar-controls {
     margin: 4px 0px 0px 0px !important;
 }
+.avtt-spectator-sheet div.avtt-sidebar-controls {
+    margin: 3px 0px 0px 0px !important;
+}
 .ct-character-sheet--dark-mode .ct-sidebar__inner div[class*='styles_content'] #chat-text {
     color: #bfccd6;
     background: #313739;
@@ -412,7 +433,8 @@ button .ddbc-tab-options__header-heading .menu-option{
 }
 
 .door-button.hiddenDoor,
-.body-rpgcharacter-sheet .door-button.secret{
+.body-rpgcharacter-sheet .door-button.secret,
+.avtt-spectator-sheet .door-button.secret{
     display:none;
 }
 
@@ -851,7 +873,15 @@ select#doorTypeSelectUVTT{
     top:-100px;
     left:-100px;
 }
-
+.note form .mce-container-body .iframeResizeCover{
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width:100%;
+    height:100%;
+    position: absolute;
+}
 #exitWizard{
     z-index: 50;
     position: fixed;
@@ -866,7 +896,8 @@ select#doorTypeSelectUVTT{
     border: none;
 }
 
-.body-rpgcharacter-sheet #fog_overlay {
+.body-rpgcharacter-sheet #fog_overlay,
+.avtt-spectator-sheet #fog_overlay {
     filter: drop-shadow(0px 0px 2px #000) blur(1px); /*fill in fog gaps on player view*/
   
 }
@@ -897,12 +928,17 @@ select#doorTypeSelectUVTT{
 
 .body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-s,
 .body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-se,
-.body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-sw{
+.body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-sw,
+.avtt-spectator-sheet #combat_tracker_inside .ui-resizable-s,
+.avtt-spectator-sheet #combat_tracker_inside .ui-resizable-se,
+.avtt-spectator-sheet #combat_tracker_inside .ui-resizable-sw{
     bottom: -35px;
 }
 
 .body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-e,
-.body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-w  {
+.body-rpgcharacter-sheet #combat_tracker_inside .ui-resizable-w,  
+.avtt-spectator-sheet #combat_tracker_inside .ui-resizable-e,
+.avtt-spectator-sheet #combat_tracker_inside .ui-resizable-w  {
     height: 100%;  
 }
 #combat_tracker_inside #combat_area{
@@ -993,7 +1029,8 @@ div.top_menu.visible,
     border-bottom-left-radius: 5px; 
 }
 
-.body-rpgcharacter-sheet #combat_tracker_inside{
+.body-rpgcharacter-sheet #combat_tracker_inside,
+.avtt-spectator-sheet #combat_tracker_inside{
     border-radius: 5px;
 }
 
@@ -2106,6 +2143,7 @@ padding-top:10px;
     font-variant: small-caps;
     font-size: 17px;
     width: 160px;
+    flex: 1 1;
 }
 
 .player-actions {
@@ -2547,7 +2585,10 @@ body:not(.encounter-builder-page) .sidebar__pane-content {
     top: 28px;
     height: calc(100vh - 30px) !important;
 }
-
+body .gamelogcontainer .sidebar__pane-content {
+    top: 0px !important;
+    height: calc(100% - 10px) !important;
+}
 .ddbc-tab-list__nav-item {
     display: flex;
     border-bottom: 3px solid transparent;
@@ -3040,13 +3081,16 @@ body .note-visibility-toggle-container {
     text-decoration: underline;
 }
 
-.body-rpgcharacter-sheet .note-list button{
+.body-rpgcharacter-sheet .note-list button,
+.avtt-spectator-sheet .note-list button{
     display: none;
 }
-.body-rpgcharacter-sheet #journal-panel .folder-item-list {
+.body-rpgcharacter-sheet #journal-panel .folder-item-list,
+.avtt-spectator-sheet #journal-panel .folder-item-list {
     padding:0px;
 }
-.body-rpgcharacter-sheet #journal-panel .note-list{
+.body-rpgcharacter-sheet #journal-panel .note-list,
+.avtt-spectator-sheet #journal-panel .note-list{
     padding: 0px 2px 0px 2px;
 }
 
@@ -3207,12 +3251,13 @@ body .note-visibility-toggle-container {
     left: 0px;
     position: absolute;
     mix-blend-mode: lighten;
-    opacity: 0.3; 
+    opacity: 0.5; 
     z-index: 23;
-    filter: brightness(3) blur(calc(3px / var(--scene-scale)));
+    filter: blur(calc(3px / var(--scene-scale)));
 }
 
-.body-rpgcharacter-sheet #raycastingCanvas{
+.body-rpgcharacter-sheet #raycastingCanvas,
+.avtt-spectator-sheet #raycastingCanvas{
     opacity: 1;
 }
 .beyond20-quick-roll-tooltip{
@@ -3444,6 +3489,9 @@ div#selectedTokensBorder {
     top: 0;
     z-index: 10;
 }
+.mce-floatpanel{
+    z-index: 91000 !important;
+}
 .icon-condition,
 .context-menu-icon-condition {
     margin: 4px;
@@ -3614,14 +3662,20 @@ div#selectedTokensBorder {
     }
   }
 
-
-.floating-combat-text.heal{
-    color: #5F5;
+body{
+    --floating-heal-color: #5F5;
+    --floating-dmg-color: #F55;
+}
+body.color-blind-avtt {
+    --floating-heal-color: #fff455;
 }
 
+.floating-combat-text.heal{
+    color: var(--floating-heal-color);
+}
 
 .floating-combat-text.dmg{
-    color: #F55;
+    color: var(--floating-dmg-color)
 }
 
 /* AOE BORDERS */
@@ -4261,6 +4315,7 @@ audio::-webkit-media-controls-time-remaining-display{
 .note-text>p:first-of-type{
     margin-top: 0px !important;
 }
+
 .note .note-pin{
     background: url(https://drive.google.com/thumbnail?id=1excaNtaLfn_Hj5EHuH-h8iimpzC36i0M);
     position: absolute;
@@ -4270,6 +4325,10 @@ audio::-webkit-media-controls-time-remaining-display{
     background-size: contain;
     z-index: 1000000;
     filter: drop-shadow(1px 2px 1px black);
+}
+.body-rpgcharacter-sheet .note .note-pin,
+.avtt-spectator-sheet .note .note-pin{
+    transform: translateY(43px);
 }
 .note .note-pin:after{
     position: absolute;
@@ -4735,6 +4794,9 @@ div#importer_area>div>div:first-of-type {
     position: relative !important;
     opacity: 1 !important;
 }
+div#token-change-image-modal img.example-token:first-of-type {
+    box-shadow: 0px 0px 2px 2px #1b9af07a;
+}
 #token-change-image-modal .example-token{
     width:90px;
     height:90px;
@@ -4837,6 +4899,11 @@ div#initialPosition_row input::-webkit-outer-spin-button,
 div#initialPosition_row input::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: searchfield;
 }
 
 /*do our own css of mobile character sheets due to disabling ddb event that changes classes*/
@@ -5110,6 +5177,7 @@ button.block-send-to-game-log span {
     display: block;
     flex-grow: 1;
     color: #10161a;
+    width:50%;
     margin-left: 8px;
     margin-right: 8px;
     line-height: 1.4;
@@ -5198,31 +5266,39 @@ button.block-send-to-game-log span {
 .note-text ul{
     padding-inline-start: 40px;
 }
-.note-text{
-    position: relative;
-    height: 100%;
-}
 
-.note-text iframe.journal-site-embed{
+
+.note-text iframe.journal-site-embed,
+.note-text form:has(>.mce-tinymce) iframe {
     display:block;
     position:absolute;
     width:100%;
     height:100%;
     top: 0px;
 }
-.note-text iframe.journal-site-embed {
+.note-text iframe.journal-site-embed,
+.note-text form:has(>.mce-tinymce) iframe{
     top: 0px;
     height: 100%;
     border: none;
 }
-.body-rpgcharacter-sheet .note-text{
+
+.note-text>p:has(.journal-site-embed),
+.note-text form:has(>.mce-tinymce iframe) {
+    height: 100%;
+    display: block;
+    position: absolute;
+    width: 100%;
+}
+
+.body-rpgcharacter-sheet .note-text,
+.avtt-spectator-sheet .note-text{
     top: 0px;
 }
-.body-rpgcharacter-sheet .note-pin {
-    transform: translateY(43px);
-}
-.body-rpgcharacter-sheet .note-text>p:first-of-type{
-    margin:0px;
+
+.body-rpgcharacter-sheet .note-text>p:first-of-type,
+.avtt-spectator-sheet .note-text>p:first-of-type{
+margin:0px;
 }
 .sidebar-list-item-row.player-row {
     height: 120px;
@@ -5867,7 +5943,8 @@ div.sidebar__pane-content div.tooltip::after {
     font-size:10px;
     padding:0px 4px;
 }
-.body-rpgcharacter-sheet .dm-eyes-only{
+.body-rpgcharacter-sheet .dm-eyes-only,
+.avtt-spectator-sheet .dm-eyes-only{
     display:none;
 }
 .elev svg{
@@ -6019,7 +6096,9 @@ button.avtt-roll-formula-button {
 .MuiButtonBase-root {
     width: 100%;
 }
-
+.MuiButtonBase-root.PrivateSwitchBase-root {
+    width: unset;
+}
 .MuiModal-root,
 div#selectedTokensBorder,
 div#selectedTokensBorderRotationGrabberConnector,
@@ -6239,7 +6318,8 @@ div#selectedTokensBorderRotationGrabberConnector,
     border-width: 1px 1px 0px 1px;
     border-radius: 5px 5px 0 0;
 }
-.body-rpgcharacter-sheet #combat_tracker_inside{
+.body-rpgcharacter-sheet #combat_tracker_inside,
+.avtt-spectator-sheet #combat_tracker_inside{
     width: 200px;   
 }
 #combat_tracker_inside #combat_footer button:last-of-type{
@@ -6249,7 +6329,8 @@ div#selectedTokensBorderRotationGrabberConnector,
     border-bottom-left-radius: 5px; 
 }
 
-.body-rpgcharacter-sheet #combat_tracker_inside{
+.body-rpgcharacter-sheet #combat_tracker_inside,
+.avtt-spectator-sheet #combat_tracker_inside{
     border-radius: 5px;
 }
 /* end also used in resize can remove if that goes in*/
@@ -6270,7 +6351,9 @@ div#selectedTokensBorderRotationGrabberConnector,
     width: 13%;
 }
 .body-rpgcharacter-sheet :is(#combat_area, #combat_area_carousel) tr td:nth-of-type(3),
-.body-rpgcharacter-sheet :is(#combat_area, #combat_area_carousel) tr td:nth-of-type(5) {
+.body-rpgcharacter-sheet :is(#combat_area, #combat_area_carousel) tr td:nth-of-type(5), 
+.avtt-spectator-sheet :is(#combat_area, #combat_area_carousel) tr td:nth-of-type(3),
+.avtt-spectator-sheet :is(#combat_area, #combat_area_carousel) tr td:nth-of-type(5) {
     width: 18%;
 }
 
@@ -6611,7 +6694,8 @@ div#selectedTokensBorderRotationGrabberConnector,
 .journal-button svg{
     padding: 2px 1px 2px 0px;
 }
-.body-rpgcharacter-sheet .popout-button.journal-button {
+.body-rpgcharacter-sheet .popout-button.journal-button, 
+.avtt-spectator-sheet .popout-button.journal-button {
     top: 6px;
 }
 
@@ -6622,7 +6706,8 @@ div#selectedTokensBorderRotationGrabberConnector,
     opacity: 0.5;
     padding:0px;
 }
-.body-rpgcharacter-sheet #combat_tracker_inside #combat_footer{
+.body-rpgcharacter-sheet #combat_tracker_inside #combat_footer,
+.avtt-spectator-sheet #combat_tracker_inside #combat_footer{
     padding-top:5px;
 }
 #combat_tracker_inside #endplayerturn.enabled,
@@ -6868,7 +6953,8 @@ div#tokenOptionsContainer .remove-from-ct>button{
 }
 /*End changes for UI*/
 
-.body-rpgcharacter-sheet #combat_tracker_inside{
+.body-rpgcharacter-sheet #combat_tracker_inside,
+.avtt-spectator-sheet #combat_tracker_inside{
     border-radius: 5px;
 }
 
@@ -7207,23 +7293,26 @@ input.max_hp[disabled]{
     fill: #201911;
     stroke: #0c0a08;
 }
-
+div#file-listing-section .sidebar-panel-loading-indicator {
+    background: none !important;
+    filter: drop-shadow(2px 2px 4px #000)
+}
 /*one button*/
-.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(1) {
+.encounter-builder-page:not(.avtt-spectator-sheet) :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(1) {
     margin-right:60px;
 }
 
 /* two buttons */
-.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(2) ~ button:last-of-type {
+.encounter-builder-page:not(.avtt-spectator-sheet) :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(2) ~ button:last-of-type {
     margin-right:30px;
 }
 
 /* three buttons */
-.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(3) ~ button:last-of-type {
+.encounter-builder-page:not(.avtt-spectator-sheet) :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(3) ~ button:last-of-type {
     margin-right:0px;
 }
 /* four buttons */
-.encounter-builder-page :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(4) ~ button:last-of-type {
+.encounter-builder-page:not(.avtt-spectator-sheet) :is(#combat_area, #combat_area_carousel) td button:first-of-type:nth-last-of-type(4) ~ button:last-of-type {
 
     margin-right:0px;
 }
@@ -7520,6 +7609,55 @@ button.launchPicker.token-row-button{
     display:inline-block;
 }
 
+button.avttPicker {
+    padding-left: 18px !important;
+    position: relative;
+}
+
+button.avttPicker.token-row-button {
+    position: relative;
+    padding-left: 0px !important;
+    display: inline-block;
+}
+button.avttPicker.token-row-button span.avtt-btn-status {
+    left: 1px;
+    width: 26px;
+    position: relative;
+    display: block;
+    height: 20px;
+}
+
+button span.avtt-btn-status {
+    background-image: var(--avtt-mask);
+    -webkit-background-position: 0px 2px;
+    background-position: 0px -2px;
+    background-size: 100%;
+    width: 25px;
+    position: absolute;
+    height: 25px;
+    left: 2px;
+    top: 0;
+    background-repeat: no-repeat;
+}
+
+#edit_scene_form button span.avtt-btn-status{
+    background-position: 0px 0px;
+    width: 20px;
+    height: 20px;
+    left: 0px;
+}
+.sidebar-list-item-row-item button.avttPicker.token-row-button span.avtt-btn-status {
+    background-image: none;
+    -webkit-mask-image: var(--avtt-mask);
+    -webkit-mask-size: 30px 30px;
+    -webkit-mask-position: -2px -1px;
+    mask-image: var(--avtt-mask);
+    mask-size: 30px 30px;
+    mask-repeat: no-repeat;
+    mask-position: -2px -1px;
+    background: #000000;
+}
+
 button.launchPicker.token-row-button span.onedrive-btn-status{
     left: 1px;
     width: 26px;
@@ -7548,15 +7686,26 @@ button span.onedrive-btn-status{
     mask-position: 0px 2px;
     background: #000;
 }
-#sounds-panel button.dropboxChooser, #sounds-panel button.launchPicker {
+#sounds-panel button.dropboxChooser, 
+#sounds-panel button.launchPicker, 
+#sounds-panel button.avttPicker{
     width: 23px;
     padding: 0px !important;
     height: 21px;
 }
-#sounds-panel button.dropboxChooser span, #sounds-panel button.launchPicker span{
+#sounds-panel button.dropboxChooser span,
+#sounds-panel button.launchPicker span,
+#sounds-panel button.avttPicker span{
     top: 2px;
 }
-
+#sounds-panel button span.avtt-btn-status {
+    background-position: -2px -2px;
+    top: 0px;
+    left: 0px;
+    background-size: 24px;
+    width: 100%;
+    height: 100%;
+}
 #sounds-panel .sidebar-panel-body>button{
     vertical-align:top;
 }
@@ -7567,11 +7716,17 @@ button span.onedrive-btn-status{
     overflow: hidden;
     transition: 250ms width 0ms;
     flex-direction:row-reverse;
-
+    flex-shrink:0;
 }
+
+.sidebar-list-item-row-details{
+    flex-shrink: 1;
+}
+
 .addTokenMenu:hover,
 .hover-add-button:hover~.addTokenMenu {
-    width: 102px;
+    width: 136px;
+    flex-shrink: 0;
 }
 
 .addTokenMenu button {
@@ -7649,7 +7804,7 @@ button span.onedrive-btn-status{
     height: 100%;
 } 
 .token>.token-image{
-    object-position: var(--offsetX, center) var(--offsetY, top);
+    object-position: var(--offsetX, center) calc(-1 * var(--offsetY, top));
     object-view-box: var(--view-box);
     opacity: var(--image-opacity);
 }
@@ -8029,7 +8184,7 @@ button#changeTokenImage:before{
     border-radius: 50%;
     transform: scale(var(--token-scale)) rotate(var(--token-rotation));
     height: 100%;
-    width: 100%;;
+    width: 100%;
     top: 0px;
     left: 0px;
     background-color: #000;
@@ -8134,29 +8289,51 @@ button#changeTokenImage:before{
     opacity: 0.8;
 }
 
+body {
+    --crit-success: #0a0;
+    --crit-fail: #a00;
+    --crit-mixed: #4768ff;
+}
+
+body.color-blind-avtt {
+    --crit-success: #ffff00;
+}
+
 [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] .aboveDiceTotal,
 [class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] span,
 [class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] span,
-[class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal{
-    color:#0a0 !important;
+[class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal {
+    color: var(--crit-success) !important;
 }
+
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] span,
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] span,
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*="TotalContainer-Flex"] .aboveDiceTotal,
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] span,
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] span,
+.color-blind-avtt [class*="glc-game-log"] .crit-success div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal {
+    --text-shadow-color: color-mix(in srgb, #000 100%, var(--crit-success) 50%);
+    text-shadow: 1px 1px var(--text-shadow-color), -1px -1px var(--text-shadow-color), -1px 1px var(--text-shadow-color), 1px -1px var(--text-shadow-color), 2px 2px 2px var(--text-shadow-color);
+}
+
 [class*="glc-game-log"] .crit-fail div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-fail div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-fail div[class*="TotalContainer-Flex"] .aboveDiceTotal,
 [class*="glc-game-log"] .crit-fail div[class*='DiceMessage_TotalContainer'] span,
 [class*="glc-game-log"] .crit-fail div[class*='DiceMessage_TotalContainer'] span,
-[class*="glc-game-log"] .crit-fail div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal{
-    color:#a00 !important;
+[class*="glc-game-log"] .crit-fail div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal {
+    color: var(--crit-fail) !important;
 }
+
 [class*="glc-game-log"] .crit-mixed div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-mixed div[class*="TotalContainer-Flex"] span,
 [class*="glc-game-log"] .crit-mixed div[class*="TotalContainer-Flex"] .aboveDiceTotal,
 [class*="glc-game-log"] .crit-mixed div[class*='DiceMessage_TotalContainer'] span,
 [class*="glc-game-log"] .crit-mixed div[class*='DiceMessage_TotalContainer'] span,
-[class*="glc-game-log"] .crit-mixed div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal{
-    color:#4768ff !important;
+[class*="glc-game-log"] .crit-mixed div[class*='DiceMessage_TotalContainer'] .aboveDiceTotal {
+    color: var(--crit-mixed) !important;
 }
 
 [class*="glc-game-log"] div[class*="TotalContainer-Flex"] .custom-spell-save-text span,
@@ -8414,9 +8591,16 @@ button#changeTokenImage:before{
 .mfp-wrap{
     z-index: 1000000 !important;
 }
-[role='dialog'] .note .note-text {
+[role='dialog']>.note>.note-text {
     min-height: 450px;
+    position: relative;
+    height: 100%;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
+
 #combat_area tr.CTToken:before{
     content:  '???';
     font-size: 12px;
@@ -8433,7 +8617,8 @@ button#changeTokenImage:before{
     content: attr(data-name);
     color: #444d;
 }
-body.body-rpgcharacter-sheet #combat_area tr.CTToken:before{
+body.body-rpgcharacter-sheet #combat_area tr.CTToken:before,
+body.avtt-spectator-sheet #combat_area tr.CTToken:before{
     width: calc(100% - 80px);
 }
 
@@ -8615,14 +8800,18 @@ body:not(.body-rpgcampaign) .site-bar{
     display: none;
 }
 .aura-element-container-clip{
+    position: absolute;
+}
+.aura-clip-container {
     width: 100%;
     height: 100%;
     position: absolute;
-    z-index: 9;
+    z-index: 8;
     mix-blend-mode: lighten;
 }
-
-
+.aura-clip-container.vision:has(.devilsight){
+    z-index: 20 !important;
+}
 [data-darkness]{
     transform: rotate(var(--token-rotation));
     z-index:16 !important;
@@ -8649,6 +8838,12 @@ body:not(.body-rpgcampaign) .site-bar{
 #tokens .grouprotate .base,
 #tokens .grouprotate .hpvisualbar{
     opacity: 1 !important;
+}
+
+.body-rpgcharacter-sheet :is(#tokens, #token_map_items) .inPersonMini,
+.avtt-spectator-sheet :is(#tokens, #token_map_items) .inPersonMini
+{
+    display: none !important;
 }
 
 .audio-token .audio-radius{
@@ -8792,13 +8987,20 @@ body.preventSelectDefinitelyNot .token.declutterToken[style*='opacity: 0.5']{
     animation: none !important;
 }
 
+[data-clone-id],
+[data-clone-id] * {
+    pointer-events: none !important;
+}
 div.note[id^="ui-id"] {
     width: 100% !important;
     padding: 0px !important;
-    max-height: calc(100% - 33px) !important;
-    position: unset;
+    max-height: calc(100% - 30px) !important;
+    position: relative;
+    overflow: scroll;
 }
-
+div.note[id^="ui-id"] { 
+    height: 100% !important;
+}
 .tooltip-body-description-text.note-text img{
     max-width: 100%;
     height: auto;
@@ -8828,6 +9030,15 @@ div.note[id^="ui-id"] .mce-listbox button{
 
 div.note[id^="ui-id"] .mce-btn button {
     padding: 1px 4px;
+}
+.note .mce-container .mce-btn i.mce-ico.mce-i-upload:not(.mce-i-resize):before {
+    font-family: "Material Icons", sans-serif !important;
+    content: "\f09b";
+    font-size: 20px;
+}
+body .mce-abs-layout-item,
+.mce-abs-end{
+    position: absolute !important;
 }
 .ui-dialog{
     padding: 0px !important;
@@ -8873,7 +9084,8 @@ div.note[id^="ui-id"] .mce-btn button {
     float:right;
     width:175px;
 }
-.body-rpgcharacter-sheet #VTT.paused *{
+.body-rpgcharacter-sheet #VTT.paused *,
+.avtt-spectator-sheet #VTT.paused *{
     pointer-events: none !important;
 }
 
@@ -10120,7 +10332,20 @@ button.resistanceButton.qrm_buttons_bar span {
     display:table;
     width:100%;
 }
-[class*="glc-game-log"] table#qrm-gamelog :is(tr, td),
+[class*="glc-game-log"] table#qrm-gamelog td:last-of-type {
+    width: 100% !important;
+}
+.body-rpgcharacter-sheet [class*="glc-game-log"] table#qrm-gamelog tr.hideQrmRowFromPlayers .qrm_name_line,
+.avtt-spectator-sheet [class*="glc-game-log"] table#qrm-gamelog tr.hideQrmRowFromPlayers .qrm_name_line {
+    visibility: hidden;
+}
+
+.body-rpgcharacter-sheet [class*="glc-game-log"] table#qrm-gamelog tr.hideQrmRowFromPlayers .qrm_name_line::before,
+.avtt-spectator-sheet [class*="glc-game-log"] table#qrm-gamelog tr.hideQrmRowFromPlayers .qrm_name_line::before {
+    content: '???';
+    visibility: visible;
+}
+[class*="glc-game-log"] table#qrm-gamelog :is(tr, td),  
 [class*="glc-game-log"] table#qrm-gamelog{
     background:none;
     border: none;
@@ -10174,7 +10399,8 @@ button.resistanceButton.qrm_buttons_bar span {
     background-image: radial-gradient(rgba(var(--color1), calc(var(--opacity1) * var(--opacity))) var(--light1-blur-size), rgba(var(--color2), calc(var(--opacity2) * var(--opacity))) calc(var(--light1-blur-size) * 1.3) var(--light2-blur-size), transparent var(--transparency-blur-size)) !important;
 }
 
-[data-animation='static-blur-fx'] .darkvision{
+[data-animation='static-blur-fx'] .darkvision,
+[data-animation='flicker-fx'] .darkvision{
     background-image: radial-gradient(var(--vision-color) calc(var(--vision-radius) * 0.9), #00000000 var(--vision-radius)) !important;
 }
 [data-custom-animation] .islight,
@@ -11347,7 +11573,8 @@ button.channel-loop-button{
 .channel-remove-button,
 .track-add-to-mixer,
 .track-add-token-mixer,
-.sequential-button {
+.sequential-button,
+.cross-fade-button {
     box-shadow: 1px 1px 1px 1px #0003, 1px 2px 0px -2px #0003;
     border: 1px solid transparent;
     box-sizing: border-box;
@@ -11374,7 +11601,8 @@ button.channel-loop-button{
 .channel-remove-button:focus,
 .track-add-to-mixer:focus,
 .track-add-token-mixer:focus,
-.sequential-button:focus {
+.sequential-button:focus,
+.cross-fade-button:focus {
     outline: none;
 }
 
@@ -11406,7 +11634,8 @@ button.channel-loop-button{
 .channel-remove-button:active,
 .track-add-to-mixer:active,
 .track-add-token-mixer:active,
-.sequential-button:active {
+.sequential-button:active,
+.cross-fade-button:active {
     background-color: rgb(245, 248, 250);
     box-shadow: inset #000 1px 1px 3px 1px;
     transform: translate(1px, 2px) scale(0.8);
@@ -11481,9 +11710,13 @@ div#playlistFields {
 }
 .mixer-clear-button{
     position: absolute;
+    left: 102px;
+}
+.sequential-button {
+    position: absolute;
     left: 126px;
 }
-.sequential-button{
+.cross-fade-button {
     position: absolute;
     left: 150px;
 }
@@ -11588,16 +11821,6 @@ div#playlistFields {
     padding-top: 0
 }
 
-.stat-block .monster-header {
-    padding-top: 4px;
-    letter-spacing: .35px;
-    font-weight: 500;
-    color: var(--monster-header-color,#5b160c);
-    font-size: var(--monster-trait-header-size,22px);
-    font-family: var(--monster-trait-header-font,"Roboto Condensed",Helvetica,sans-serif);
-    border-bottom: 2px solid var(--monster-header-underline,#7a3c2f);
-    font-variant: small-caps;
-}
 
 .stat-block .monster-header+p {
     break-before: avoid
@@ -11632,6 +11855,10 @@ div#playlistFields {
 .ct-sidebar__inner>[class*='styles_pane']>[class*='styles_content'][class*='styles_dark'] .glc-game-log{
     background: #12181c;
 }
+
+.stat-block p{
+    margin-bottom: 10px;
+}
 .stat-block .mon-stat-block__attribute-label,
 .stat-block .mon-stat-block__attribute-data-value,
 .stat-block .mon-stat-block__tidbits span,
@@ -11658,7 +11885,16 @@ div#playlistFields {
 .stat-block .stats+p {
     margin-top: 10px
 }
-
+.stat-block :is(p.monster-header, .monster-header) {
+    padding-top: 4px;
+    letter-spacing: .35px;
+    font-weight: 500;
+    color: var(--monster-header-color, #5b160c);
+    font-size: var(--monster-trait-header-size, 22px);
+    font-family: var(--monster-trait-header-font, "Roboto Condensed", Helvetica, sans-serif);
+    border-bottom: 2px solid var(--monster-header-underline, #7a3c2f);
+    font-variant: small-caps;
+}
 .stat-block .stats table.abilities-saves {
     --theme-table-row-color: transparent;
     flex: 1 1 auto;
@@ -13915,7 +14151,19 @@ button#displayedDiceFormulaExit:hover {
 
 }
 
-
+.list-item-identifier.folder.avtt-drop-target:after,
+.sidebar-panel-body.avtt-drop-target:after,
+#track-list.avtt-drop-target:after {
+    content: '';
+    position: absolute;
+    top: 0px;
+    bottom: 0px;
+    left: 0px;
+    right: 0px;
+    box-shadow: inset 0px 0px 4px 1px #aaF;
+    border: 1px #0000ff33 dotted;
+    pointer-events: none;
+}
 
 /***** Icon UI *****/
 
@@ -14035,9 +14283,23 @@ button#displayedDiceFormulaExit:hover {
     top:26px;
     left:unset !important;
 }
-.body-rpgcharacter-sheet.mobileAVTTUI #zoom_buttons{
-    top:30px;
+
+.body-rpgcharacter-sheet.mobileAVTTUI #zoom_buttons {
+    top: 30px;
 }
+
+.avtt-spectator-sheet #zoom_buttons {
+    top: 0px;
+}
+.avtt-spectator-sheet.mobileAVTTUI #zoom_buttons {
+    top: 28px;
+}
+
+.avtt-spectator-sheet #hide_rightpanel,
+.avtt-spectator-sheet.mobileAVTTUI #hide_rightpanel {
+    top: 0px !important;
+}
+
 .mobileAVTTUI #zoom_buttons span,
 .mobileAVTTUI #zoom_buttons svg{
     font-size: 22px !important;

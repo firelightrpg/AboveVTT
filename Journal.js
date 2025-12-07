@@ -8,97 +8,268 @@
  */
 cached_journal_items = {};
 
+const AVTT_JOURNAL_CHUNK_SIZE = 100000;
+const AVTT_JOURNAL_CHUNK_STRATEGY = "chunked-json";
+
+function avttPromisifyIdbRequest(request) {
+	if (!request) {
+		return Promise.reject(new Error("Missing IDB request"));
+	}
+	return new Promise((resolve, reject) => {
+		request.onsuccess = (event) => resolve(event?.target?.result);
+		request.onerror = (event) => reject(event?.target?.error || event);
+	});
+}
+
+function avttResolveDefaultValue(dataType) {
+	return dataType === "array" ? [] : {};
+}
+
+async function avttSaveChunkedJson(objectStore, baseKey, data, options = {}) {
+	if (!objectStore || !baseKey) {
+		return;
+	}
+	const chunkSize = Number.isFinite(options?.chunkSize)
+		? Math.max(1, options.chunkSize)
+		: AVTT_JOURNAL_CHUNK_SIZE;
+	const dataType = options?.dataType === "array" ? "array" : "object";
+	const normalizedData =
+		data !== undefined && data !== null ? data : avttResolveDefaultValue(dataType);
+
+	let serialized;
+	try {
+		serialized = JSON.stringify(normalizedData);
+	} catch (error) {
+		console.warn("Failed to serialize journal payload for", baseKey, error);
+		return;
+	}
+
+	let existingManifest = null;
+	try {
+		existingManifest = await avttPromisifyIdbRequest(objectStore.get(baseKey));
+	} catch (error) {
+		console.warn("Failed to read existing manifest for", baseKey, error);
+	}
+	const previousChunkKeys = Array.isArray(existingManifest?.journalData?.chunkKeys)
+		? existingManifest.journalData.chunkKeys
+		: [];
+	for (const previousKey of previousChunkKeys) {
+		try {
+			await avttPromisifyIdbRequest(objectStore.delete(previousKey));
+		} catch (error) {
+			console.warn("Failed to delete stale journal chunk", previousKey, error);
+		}
+	}
+	const newChunkKeys = [];
+	for (let offset = 0, index = 0; offset < serialized.length; offset += chunkSize, index += 1) {
+		const chunkValue = serialized.slice(offset, offset + chunkSize);
+		const chunkKey = `${baseKey}::chunk::${index}`;
+		newChunkKeys.push(chunkKey);
+		try {
+			await avttPromisifyIdbRequest(
+				objectStore.put({ journalId: chunkKey, journalData: chunkValue }),
+			);
+		} catch (error) {
+			console.error("Failed to store journal chunk", chunkKey, error);
+			return;
+		}
+	}
+
+	const manifestPayload = {
+		version: 2,
+		strategy: AVTT_JOURNAL_CHUNK_STRATEGY,
+		chunkSize,
+		chunkCount: newChunkKeys.length,
+		chunkKeys: newChunkKeys,
+		dataType,
+		totalLength: serialized.length,
+		updatedAt: Date.now(),
+	};
+	try {
+		await avttPromisifyIdbRequest(
+			objectStore.put({ journalId: baseKey, journalData: manifestPayload }),
+		);
+	} catch (error) {
+		console.error("Failed to store journal manifest for", baseKey, error);
+	}
+}
+
+async function avttLoadChunkedJson(objectStore, baseKey, options = {}) {
+	if (!objectStore || !baseKey) {
+		return options?.defaultValue !== undefined
+			? options.defaultValue
+			: avttResolveDefaultValue(options?.dataType === "array" ? "array" : "object");
+	}
+	let record;
+	try {
+		record = await avttPromisifyIdbRequest(objectStore.get(baseKey));
+	} catch (error) {
+		console.warn("Failed to read journal record for", baseKey, error);
+		return options?.defaultValue !== undefined
+			? options.defaultValue
+			: avttResolveDefaultValue(options?.dataType === "array" ? "array" : "object");
+	}
+
+	const payload = record?.journalData;
+	if (
+		payload &&
+		payload.strategy === AVTT_JOURNAL_CHUNK_STRATEGY &&
+		Array.isArray(payload.chunkKeys)
+	) {
+		const chunks = [];
+		for (const chunkKey of payload.chunkKeys) {
+			try {
+				const chunkRecord = await avttPromisifyIdbRequest(objectStore.get(chunkKey));
+				if (typeof chunkRecord?.journalData === "string") {
+					chunks.push(chunkRecord.journalData);
+				}
+			} catch (error) {
+				console.warn("Failed to load journal chunk", chunkKey, error);
+			}
+		}
+		const combined = chunks.join("");
+		if (!combined) {
+			return options?.defaultValue !== undefined
+				? options.defaultValue
+				: avttResolveDefaultValue(payload.dataType === "array" ? "array" : "object");
+		}
+		try {
+			return JSON.parse(combined);
+		} catch (error) {
+			console.warn("Failed to parse chunked journal payload for", baseKey, error);
+			return options?.defaultValue !== undefined
+				? options.defaultValue
+				: avttResolveDefaultValue(payload.dataType === "array" ? "array" : "object");
+		}
+	}
+
+	if (payload !== undefined) {
+		return payload;
+	}
+	if (options?.defaultValue !== undefined) {
+		return options.defaultValue;
+	}
+	return undefined;
+}
+
 class JournalManager{
 	
 	
 	constructor(gameid){
 		this.gameid=gameid;
-		let promises = [];
+		this.notes = {};
+		this.chapters = [];
 
-		let objectStore = gameIndexedDb.transaction(["journalData"]).objectStore(`journalData`)
-		
-		
-	   	promises.push(new Promise((resolve) => { 
-		   	objectStore.get(`Journal`).onsuccess = (event) => {
-			 	if(event?.target?.result?.journalData){
-			 		this.notes = event?.target?.result?.journalData	
-				}
-				else {
-				  	if (window.DM && (localStorage.getItem('Journal' + gameid) != null)) {
-				  		this.notes = $.parseJSON(localStorage.getItem('Journal' + gameid));
-				  	}
-				  	else{
-				  		this.notes={};
-				  	}
-				}
-				let statBlockPromise = new Promise((resolve) => {
-					let globalObjectStore = globalIndexedDB.transaction(["journalData"]).objectStore(`journalData`)
-					if(window.DM){
-				  		globalObjectStore.get(`JournalStatblocks`).onsuccess = (event) => {
-						 	if(event?.target?.result?.journalData){
-							 	this.notes = {
-									...this.notes,
-									...event?.target?.result?.journalData
-								}			
-							}
-							else {
-								if((localStorage.getItem('JournalStatblocks') != null && localStorage.getItem('JournalStatblocks') != 'undefined')){
-							  		this.notes = {
-							  			...this.notes,
-							  			...$.parseJSON(localStorage.getItem('JournalStatblocks'))
-							  		}
-							  	}
-							}
-							resolve(true);
-						}
-					}
-
-					else{
-				  		globalObjectStore.get(`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`).onsuccess = (event) => {
-						 	if(event?.target?.result?.journalData){
-							 	this.notes = {
-									...this.notes,
-									...event?.target?.result?.journalData
-								}			
-							}
-							resolve(true);
-						}
-					}
-				})
-
-				statBlockPromise.then(()=>{resolve(true)});
-				
-			}
-		}))
-
-		promises.push(new Promise((resolve) => {
-			objectStore.get(`JournalChapters`).onsuccess = (event) => {
-			 	if(event?.target?.result?.journalData){
-			 		this.chapters = event?.target?.result?.journalData; 		
+		const loadJournalPromise = (async () => {
+			let journalData;
+			try {
+				const objectStore = gameIndexedDb.transaction(["journalData"]).objectStore(`journalData`);
+				if(window.DM){
+					journalData = {
+						...await avttLoadChunkedJson(objectStore, `Journal`, { dataType: "object" }),
+						...await avttLoadChunkedJson(objectStore, `PlayerJournal`, { dataType: "object" })
+					};
 				}
 				else{
-				  	if (window.DM && (localStorage.getItem('JournalChapters' + gameid) != null)) {
-				  		this.chapters = $.parseJSON(localStorage.getItem('JournalChapters' + gameid));
-				  	}
-				  	else{
-				  		this.chapters=[];
-				  	}
-			   	}
-				resolve(true);
+					journalData = await avttLoadChunkedJson(objectStore, `PlayerJournal`, { dataType: "object" })
+				}
+				
+			} catch (error) {
+				console.warn("Failed to load journal entries", error);
 			}
-		}))
 
+			if (journalData === undefined) {
+				if (window.DM && localStorage.getItem(`Journal${gameid}`) != null) {
+					try {
+						journalData = $.parseJSON(localStorage.getItem(`Journal${gameid}`));
+					} catch (error) {
+						console.warn("Failed to parse legacy local journal storage", error);
+						journalData = {};
+					}
+				} else {
+					journalData = {};
+				}
+			}
+			if (typeof journalData !== "object" || journalData === null) {
+				journalData = {};
+			}
+			this.notes = journalData;
+		})();
 
+		const loadChaptersPromise = (async () => {
+			let chaptersData;
+			try {
+				const objectStore = gameIndexedDb.transaction(["journalData"]).objectStore(`journalData`);
+				chaptersData = await avttLoadChunkedJson(objectStore, `JournalChapters`, {
+					dataType: "array",
+				});
+			} catch (error) {
+				console.warn("Failed to load journal chapters", error);
+			}
+			if (chaptersData === undefined) {
+				if (window.DM && localStorage.getItem(`JournalChapters${gameid}`) != null) {
+					try {
+						chaptersData = $.parseJSON(localStorage.getItem(`JournalChapters${gameid}`));
+					} catch (error) {
+						console.warn("Failed to parse legacy journal chapters storage", error);
+						chaptersData = [];
+					}
+				} else {
+					chaptersData = [];
+				}
+			}
+			if (!Array.isArray(chaptersData)) {
+				chaptersData = [];
+			}
+			this.chapters = chaptersData;
+		})();
 
+		const loadStatBlocksPromise = loadJournalPromise.then(async () => {
+			let statBlocksData;
+			try {
+				const globalObjectStore = globalIndexedDB.transaction(["journalData"]).objectStore(`journalData`);
+				if (window.DM) {
+					statBlocksData = await avttLoadChunkedJson(globalObjectStore, `JournalStatblocks`, {
+						dataType: "object",
+					});
+				} else if (window?.CAMPAIGN_INFO?.dmId) {
+					statBlocksData = await avttLoadChunkedJson(
+						globalObjectStore,
+						`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`,
+						{ dataType: "object" },
+					);
+				}
+			} catch (error) {
+				console.warn("Failed to load journal stat blocks", error);
+			}
 
-		Promise.all(promises).then(() => {
-		  if(is_abovevtt_page()){
-		  	this.build_journal();
-		  }
-		    if(window.DM && !is_gamelog_popout()){
-			  	// also sync the journal
-			    window.JOURNAL?.sync();
-				did_update_scenes();
+			if (statBlocksData === undefined && window.DM) {
+				const legacyStatBlocks = localStorage.getItem(`JournalStatblocks`);
+				if (legacyStatBlocks != null && legacyStatBlocks !== "undefined") {
+					try {
+						statBlocksData = $.parseJSON(legacyStatBlocks);
+					} catch (error) {
+						console.warn("Failed to parse legacy stat blocks", error);
+						statBlocksData = {};
+					}
+				}
+			}
+
+			if (statBlocksData && typeof statBlocksData === "object") {
+				this.notes = {
+					...this.notes,
+					...statBlocksData,
+				};
+			}
+		});
+
+		Promise.all([loadJournalPromise, loadChaptersPromise, loadStatBlocksPromise]).then(() => {
+			if(is_abovevtt_page()){
+				this.build_journal();
+			}
+			if(window.DM && !is_gamelog_popout()){
+				// also sync the journal
+				window.JOURNAL?.sync();
 			}
 		});
 	}
@@ -106,95 +277,97 @@ class JournalManager{
 	
 	
 	persist(allowPlayerPersist=false){
-		if(window.DM || allowPlayerPersist){ 
-
-			const statBlocks = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock == true));
-			const chapters = this.chapters
-			const journal = Object.fromEntries(Object.entries(this.notes).filter(([key, value]) => this.notes[key].statBlock != true));
-
-
-			const storeImage = gameIndexedDb.transaction([`journalData`], "readwrite")
-			const objectStore = storeImage.objectStore(`journalData`)
-
-			const globalObjectStore = globalIndexedDB.transaction(["journalData"], "readwrite").objectStore(`journalData`)
-
-			if(window.DM){ // store your own statblocks as DM
-				const deleteRequest = globalObjectStore.delete(`JournalStatblocks`);
-				deleteRequest.onsuccess = (event) => {
-				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks`, 'journalData': statBlocks});
-				};
-				deleteRequest.onerror = (event) => {
-				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks`, 'journalData': statBlocks});
-				};
-			}
-			else{ // store other DMs statblocks for use when DM isn't online; We keep these seperate so we don't override our own statblocks with another DMs statblock set.
-				const deleteRequest = globalObjectStore.delete(`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`);
-				deleteRequest.onsuccess = (event) => {
-				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`, 'journalData': statBlocks});
-				};
-				deleteRequest.onerror = (event) => {
-				  const objectStoreRequest = globalObjectStore.add({journalId: `JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`, 'journalData': statBlocks});
-				};
-			}
-
-
-			const journalDeleteRequest = objectStore.delete(`Journal`);
-			journalDeleteRequest.onsuccess = (event) => {
-			  const objectStoreRequest = objectStore.add({journalId: `Journal`, 'journalData': journal});
-			};
-			journalDeleteRequest.onerror = (event) => {
-			  const objectStoreRequest = objectStore.add({journalId: `Journal`, 'journalData': journal});
-			};
-
-	
-			const chapterDeleteRequest = objectStore.delete(`JournalChapters`);
-			chapterDeleteRequest.onsuccess = (event) => {
-			  const objectStoreRequest = objectStore.add({journalId: `JournalChapters`, 'journalData': chapters});
-			};
-			journalDeleteRequest.onerror = (event) => {
-			  const objectStoreRequest = objectStore.add({journalId: `JournalChapters`, 'journalData': chapters});
-			};
-			if(window.DM){ // old storage kept as backup for now. 
-				try{
-					/*
-					Stop saving this here in 1.30 - remove at later date once confirmed migrated. 
-
-					localStorage.setItem('JournalStatblocks', JSON.stringify(statBlocks));   
-					localStorage.setItem('Journal' + this.gameid, JSON.stringify(journal));
-					localStorage.setItem('JournalChapters' + this.gameid, JSON.stringify(chapters));
-
-					*/ 
-				}
-				catch(e){
-					console.warn('localStorage Journal Storage Failed', e) // prevent errors from stopping code when local storage is full.
-				}
-			}
-
+		if(!(window.DM || allowPlayerPersist)){
+			return;
 		}
+		const executePersist = async () => {
+			const notes = this.notes && typeof this.notes === "object" ? this.notes : {};
+			const statBlocks = Object.fromEntries(
+				Object.entries(notes).filter(([key]) => notes[key]?.statBlock === true)
+			);
+			const journal = Object.fromEntries(
+				Object.entries(notes).filter(([key]) => notes[key]?.statBlock !== true && !notes[key]?.player)
+			);
+			const journalPlayersOnly = Object.fromEntries(
+				Object.entries(notes).filter(([key]) => notes[key]?.statBlock !== true && notes[key]?.player)
+			);
+			
+			const chapters = Array.isArray(this.chapters) ? this.chapters : [];
 
+			
+			try {
+				const transaction = gameIndexedDb.transaction([`journalData`], "readwrite");
+				const objectStore = transaction.objectStore(`journalData`);
+				if(window.DM){
+					await avttSaveChunkedJson(objectStore, `Journal`, journal, { dataType: "object" });
+				}				
+				await avttSaveChunkedJson(objectStore, `PlayerJournal`, journalPlayersOnly, { dataType: "object" })
+				await avttSaveChunkedJson(objectStore, `JournalChapters`, chapters, {
+					dataType: "array",
+				});
+			} catch (error) {
+				console.warn("Failed to persist journal entries", error);
+			}
+
+			try {
+				const globalObjectStore = globalIndexedDB
+					.transaction(["journalData"], "readwrite")
+					.objectStore(`journalData`);
+				if (window.DM) {
+					await avttSaveChunkedJson(globalObjectStore, `JournalStatblocks`, statBlocks, {
+						dataType: "object",
+					});
+				} else if (window?.CAMPAIGN_INFO?.dmId) {
+					await avttSaveChunkedJson(
+						globalObjectStore,
+						`JournalStatblocks_${window.CAMPAIGN_INFO.dmId}`,
+						statBlocks,
+						{ dataType: "object" },
+					);
+				}
+			} catch (error) {
+				console.warn("Failed to persist journal stat blocks", error);
+			}
+
+		};
+
+		executePersist().catch((error) => {
+			console.warn("Journal persist encountered an unexpected error", error);
+		});
 	}
 	
-	
-	
-	sync(){
-		let self=this;
 
-		if(window.DM){
-			window.MB.sendMessage('custom/myVTT/JournalChapters',{
+	sync = mydebounce(() => {
+		let self = this;
+		const isAnyParentShared = function (chapter) {
+			let parentShared = false;
+			while (parentShared == false && chapter?.parentID != undefined) {
+				const parentId = chapter.parentID;
+				chapter = self.chapters.find(d => d.id == parentId);
+				if (chapter?.shareWithPlayer)
+					parentShared = true;
+			}
+			return parentShared;
+		}
+		if (window.DM) {
+			window.MB.sendMessage('custom/myVTT/JournalChapters', {
 				chapters: self.chapters
 			});
 			let sendNotes = [];
-			for(let i in self.notes){
-				if(self.notes[i].player){
+
+
+			for (let i in self.notes) {
+				const parentFolder = self.chapters.find(d => d.notes.includes(i));
+				if (self.notes[i].player || parentFolder?.shareWithPlayer || isAnyParentShared(parentFolder)) {
 					self.notes[i].id = i;
 					sendNotes.push(self.notes[i])
 				}
 			}
 
 			self.sendNotes(sendNotes)
-			
+
 		}
-	}
+	}, 5000);
 	sendNotes(sendNotes){
 
 		let self=this;
@@ -219,12 +392,43 @@ class JournalManager{
 	 * @param {Array|Boolean} shareWithPlayer - Array of player userIds to share with, or true to share with all players
 	 */
 	share_chapter(chapterIndex, shareWithPlayer){
-		this.chapters[chapterIndex].shareWithPlayer = shareWithPlayer || false;
-		this.persist();
-		this.build_journal();
+		const self = this;
+		self.chapters[chapterIndex].shareWithPlayer = shareWithPlayer || false;
+		self.persist();
+		self.build_journal();
 		window.MB.sendMessage('custom/myVTT/JournalChapters',{
-			chapters: this.chapters
+			chapters: self.chapters
 		});
+		
+		if(shareWithPlayer){
+			const anyParentIsChapter = function (id, chapter) {
+				
+				let noteChapter = self.chapters.find(d => d.notes.includes(id));
+				let anyParentIsChapter = noteChapter?.id == chapter.id;
+				while (anyParentIsChapter == false && noteChapter?.parentID != undefined) {
+					const parentId = noteChapter.parentID;
+					noteChapter = self.chapters.find(d => d.id == parentId);
+					if (noteChapter?.id == chapter?.id)
+						anyParentIsChapter = true;
+				}
+				return anyParentIsChapter;
+			}
+			const chapter = self.chapters[chapterIndex]
+			
+			let sendNotes = [];
+
+
+			for (let i in self.notes) {	
+				if (anyParentIsChapter(i, chapter)) {
+					self.notes[i].id = i;
+					sendNotes.push(self.notes[i])
+				}
+			}
+			self.sendNotes(sendNotes)
+		}
+		
+		
+
 	}
 	build_journal(searchText){
 		console.log('build_journal');
@@ -436,7 +640,6 @@ class JournalManager{
 				traverseChaptersDown(chapter);
 			});
 
-			console.log()
 			
 			filteredChapters.forEach(chapter => {
 				chapter.notes.forEach(note_id => {
@@ -654,14 +857,14 @@ class JournalManager{
 					});
 
 
-					for(let i =0; i<window.playerUsers.length; i++){
-						if(toggle_container.find(`input[name='${window.playerUsers[i].userId}']`).length == 0){
-							let visibility_toggle=$(`<input type='checkbox' name='${window.playerUsers[i].userId}'/>`);
-							let visibility_row = $(`<div class='visibility_toggle_row'><label for='${window.playerUsers[i].userId}'>${window.playerUsers[i].userName}</label></div>`)
+					for(let j =0; j<window.playerUsers.length; j++){
+						if(toggle_container.find(`input[name='${window.playerUsers[j].userId}']`).length == 0){
+							let visibility_toggle=$(`<input type='checkbox' name='${window.playerUsers[j].userId}'/>`);
+							let visibility_row = $(`<div class='visibility_toggle_row'><label for='${window.playerUsers[j].userId}'>${window.playerUsers[j].userName}</label></div>`)
 							
 							visibility_row.append(visibility_toggle)
 
-							visibility_toggle.prop("checked",(self.chapters[i]?.shareWithPlayer instanceof Array && self.chapters[i]?.shareWithPlayer.includes(`${window.playerUsers[i].userId}`)));
+							visibility_toggle.prop("checked",(self.chapters[i]?.shareWithPlayer instanceof Array && self.chapters[i]?.shareWithPlayer.includes(`${window.playerUsers[j].userId}`)));
 							
 							visibility_toggle.change(function(){
 								let sharedUsers = toggle_container.find(`input:checked:not([name='allPlayers'])`).toArray().map(d => d.name);
@@ -762,7 +965,7 @@ class JournalManager{
 					if(! (note_id in self.notes && note_id in relevantNotes ))
 						continue;
 						
-					if( (! window.DM) && (!sharedParentFolder) && (self.notes[note_id]?.player == false || (self.notes[note_id]?.player instanceof Array && !self.notes[note_id]?.player.includes(`${window.myUser}`))) && (self.chapters[i]?.shareWithPlayer == false || self.chapters[i]?.shareWithPlayer instanceof Array && !self.chapters[i]?.shareWithPlayer.includes(`${window.myUser}`)))
+					if( (! window.DM) && (!sharedParentFolder) && (self.notes[note_id]?.player == false || (self.notes[note_id]?.player instanceof Array && !self.notes[note_id]?.player.includes(`${window.myUser}`))) && !(self.chapters[i]?.shareWithPlayer == true || (self.chapters[i]?.shareWithPlayer instanceof Array && self.chapters[i]?.shareWithPlayer.includes(`${window.myUser}`))))
 						continue;
 					
 					let prependIcon = (self.notes[note_id].player && window.DM) ? $(`<span class="material-symbols-outlined" style='font-size:12px'>share</span>`) : '';
@@ -876,7 +1079,7 @@ class JournalManager{
 										let sharedUsers = toggle_container.find(`input:checked:not([name='allPlayers'])`).toArray().map(d => d.name);
 										if(sharedUsers.length == 0)
 											sharedUsers = false;
-										window.JOURNAL.note_visibility(note_id,visibility_toggle.is(":checked"));
+										window.JOURNAL.note_visibility(note_id, sharedUsers);
 										window.JOURNAL.build_journal();
 									});
 									
@@ -945,7 +1148,7 @@ class JournalManager{
 			chapterImport.append($(`<option value='/magic-items'>Magic Items</option>`));
 			chapterImport.append($(`<option value='/feats'>Feats</option>`));
 			chapterImport.append($(`<option value='/spells'>Spells</option>`));
-			const sortedSources = window.ddbConfigJson.sources.sort((a, b) => a.description.localeCompare(b.description));
+			const sortedSources = window.ddbConfigJson.sources.sort((a, b) => a.description.localeCompare(b.description, 'en'));
 			for(let source=0; source<sortedSources.length; source++){
 				const currentSource = sortedSources[source]
 				if(currentSource.sourceURL == '' || currentSource.name == 'HotDQ' || currentSource.name == 'RoT')
@@ -972,7 +1175,7 @@ class JournalManager{
 							text: "",
 							player: false,
 							plain: "",
-							ddbsource: `https://dndbeyond.com${source}`
+							ddbsource: `https://www.dndbeyond.com${source}`
 						};
 						let chapter = self.chapters.find(x => x.title == 'Compendium')
 						if(!chapter){
@@ -987,6 +1190,7 @@ class JournalManager{
 						chapter.notes.push(new_noteid);
 						self.persist();
 						self.build_journal(searchText);
+						journalPanel.remove_sidebar_loading_indicator();
 					}
 					else{
 						self.chapters.push({
@@ -1607,6 +1811,7 @@ class JournalManager{
 		    $(this).find('p').remove();
 		    $(this).after(input)
 	    })
+
 		if(!noteAlreadyOpen){
 			note.append(note_text);
 		}
@@ -1628,8 +1833,7 @@ class JournalManager{
 			$("[role='dialog']").draggable({
 				containment: "#windowContainment",
 				start: function () {
-					$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-					$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+					$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 				},
 				stop: function () {
 					$('.iframeResizeCover').remove();			
@@ -1637,8 +1841,7 @@ class JournalManager{
 			});
 			$("[role='dialog']").resizable({
 				start: function () {
-					$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-					$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+					$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 				},
 				stop: function () {
 					$('.iframeResizeCover').remove();			
@@ -1664,7 +1867,8 @@ class JournalManager{
 					    overflow: auto !important;
 					}
 				</stlye>`);
-				
+				if(!window.DM)
+					$(window.childWindows[title].document).find("body").addClass('body-rpgcharacter-sheet');
 				
 				$(this).siblings(".ui-dialog-titlebar").children(".ui-dialog-titlebar-close").click();
 			});
@@ -1672,6 +1876,7 @@ class JournalManager{
 				event.preventDefault();
 				render_source_chapter_in_iframe(event.target.href);
 			});
+			note.parent().css('height', '600px');
 		}
 		this.positionNotePins(id, note_text);
 	}
@@ -1976,7 +2181,7 @@ class JournalManager{
 
 
 
-    translateHtmlAndBlocks(target, displayNoteId) {
+    async translateHtmlAndBlocks(target, displayNoteId) {
     	let pastedButtons = target.find('.avtt-roll-button, [data-rolltype="recharge"], .integrated-dice__container, span[data-dicenotation]');
     	target.find('>style:first-of-type, >style#contentStyles').remove();
 		
@@ -1994,18 +2199,17 @@ class JournalManager{
 		for(let i=0; i<trackerSpans.length; i++){
 			$(trackerSpans[i]).replaceWith(`[track]${$(trackerSpans[i]).text()}[/track]`);
 		}
-		const iframes = target.find('.journal-site-embed')
-		for(let i=0; i<iframes.length; i++){
-			let url = $(iframes[i]).text();
-			if(url.includes('dropbox.com')){
-				url = url.replace('dl=0', 'raw=1')
-			}
-			else if(url.match(/drive\.google\.com.*\/view\?usp=/gi)){
-				url = url.replace(/view\?usp=/gi, 'preview?usp=')
-			}
-			$(iframes[i]).replaceWith(`<iframe class='journal-site-embed' src='${url}'></iframe>`);
+		const embededIframes = target.find('iframe');
+		for(let i=0; i<embededIframes.length; i++){
+			if(!embededIframes[i].src.startsWith(window.EXTENSION_PATH))
+				embededIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(embededIframes[i].src)}`;
 		}
 
+
+
+
+
+		
 
     	let data = $(target).clone().html();
 
@@ -2050,7 +2254,7 @@ class JournalManager{
                 	if(m.startsWith('#') || m.startsWith('>'))
                 		return m;
                 	
-                	let rulesId = window.ddbConfigJson.rules.filter((d) => d.name.localeCompare(m, undefined, { sensitivity: 'base' }) == 0)[0].id;
+					let rulesId = window.ddbConfigJson.rules.filter((d) => d.name.localeCompare(m, "en", { sensitivity: 'base' }) == 0)[0].id;
                		return `<a class="tooltip-hover condition-tooltip" href="/compendium/rules/basic-rules/combat#${m}" aria-haspopup="true" data-tooltip-href="//www.dndbeyond.com/rules/${rulesId}-tooltip" data-tooltip-json-href="//www.dndbeyond.com/conditions/${rulesId}/tooltip-json" target="_blank">${m}</a>`
                 }
             );
@@ -2061,7 +2265,7 @@ class JournalManager{
                 	if(m.startsWith('#') || m.startsWith('>'))
                 		return m;
                 	
-                	let conditionId = window.ddbConfigJson.conditions.filter((d) => d.definition.name.localeCompare(m, undefined, { sensitivity: 'base' }) == 0)[0].definition.id;
+					let conditionId = window.ddbConfigJson.conditions.filter((d) => d.definition.name.localeCompare(m, "en", { sensitivity: 'base' }) == 0)[0].definition.id;
                		return `<a class="tooltip-hover condition-tooltip" href="/compendium/rules/free-rules/rules-glossary${m}Condition" aria-haspopup="true" data-tooltip-href="//www.dndbeyond.com/conditions/${conditionId}-tooltip" data-tooltip-json-href="//www.dndbeyond.com/conditions/${conditionId}/tooltip-json" target="_blank">${m}</a>`
                 }
             );
@@ -2071,7 +2275,7 @@ class JournalManager{
                 function(m){
 
                 	
-                	let skillId = window.ddbConfigJson.abilitySkills.filter((d) => d.name.localeCompare(m, undefined, { sensitivity: 'base' }) == 0)[0].id;
+					let skillId = window.ddbConfigJson.abilitySkills.filter((d) => d.name.localeCompare(m, "en", { sensitivity: 'base' }) == 0)[0].id;
                		return `<a class="tooltip-hover skill-tooltip" href="/compendium/rules/basic-rules/using-ability-scores#${m}" aria-haspopup="true" data-tooltip-href="//www.dndbeyond.com/skills/${skillId}-tooltip" data-tooltip-json-href="//www.dndbeyond.com/skills/${skillId}/tooltip-json" target="_blank">${m}</a>`
                 }
 
@@ -2089,7 +2293,7 @@ class JournalManager{
                 /(?<!]|;|#|\w|\-|<[^>]+)(truesight|blindsight|darkvision|tremorsense)(?![^<]+>|\-|\w|\[)/gi,
                  function(m){
                 	
-                	let senseId = window.ddbConfigJson.senses.filter((d) => d.name.localeCompare(m, undefined, { sensitivity: 'base' }) == 0)[0].id;
+					 let senseId = window.ddbConfigJson.senses.filter((d) => d.name.localeCompare(m, "en", { sensitivity: 'base' }) == 0)[0].id;
                		return `<a class="tooltip-hover skill-tooltip" href="" aria-haspopup="true" data-tooltip-href="//www.dndbeyond.com/senses/${senseId}-tooltip" data-tooltip-json-href="//www.dndbeyond.com/skills/${senseId}/tooltip-json" target="_blank">${m}</a>`
                 }
             );
@@ -2102,7 +2306,7 @@ class JournalManager{
      				if(m.toLowerCase().includes(' action'))
      					compare = m.toLowerCase().replace(' action', '');
                 	
-                	let actionId = window.ddbConfigJson.basicActions.filter((d) => d.name.localeCompare(compare, undefined, { sensitivity: 'base' }) == 0)[0].id;
+					let actionId = window.ddbConfigJson.basicActions.filter((d) => d.name.localeCompare(compare, "en", { sensitivity: 'base' }) == 0)[0].id;
                		return `<a class="tooltip-hover skill-tooltip" href="" aria-haspopup="true" data-tooltip-href="//www.dndbeyond.com/actions/${actionId}-tooltip" data-tooltip-json-href="//www.dndbeyond.com/skills/${actionId}/tooltip-json" target="_blank">${m}</a>`
                 }
             );
@@ -2241,9 +2445,8 @@ class JournalManager{
 
             input = input.replace(/\[track\]([a-zA-Z\s]+)([\d]+)\[\/track\]/g, function(m, m1, m2){
                 return `<span>${m1}</span><span class="add-input each" data-number="${m2}" data-spell="${m1}"></span>`
-            })
-
-           
+            })		
+			
  
             input = input.replace(/\&nbsp\;/g, ' ');
             // Replace quotes to entity
@@ -2251,10 +2454,76 @@ class JournalManager{
             return input;
         });
 
+
 	    let newHtml = lines.join('');
+			
 	    let ignoreFormatting = $(data).find('.ignore-abovevtt-formating');
 	
 		let $newHTML = $(newHtml);
+		
+		
+		const aboveSrc = $newHTML.find(`[src*='above-bucket']:not([src*='?src=above-bucket']), [href*='above-bucket']`);
+		for (let i = 0; i < aboveSrc.length; i++) {
+			const currTarget = aboveSrc[i];
+			const src = decodeURI(currTarget.src);
+			const href = decodeURI(currTarget.href);
+
+			if (src?.match(/.*?above-bucket-not-a-url\/(.*?)/gi)) {
+				let url = src.replace(/.*?above-bucket-not-a-url\/(.*?)/gi, '$1')
+				url = await getAvttStorageUrl(url);
+				if ($(currTarget).is('source') && $(currTarget).parent().is('video')) {
+					const parentVideo = $(currTarget).parent('video');
+					parentVideo.attr('src', url);
+					$(currTarget).remove();
+				}
+				else{
+					$(currTarget).attr('src', url);
+				}
+				
+				
+			}
+			else if (href?.match(/.*?above-bucket-not-a-url\/(.*?)/gi)) {
+				let url = href.replace(/.*?above-bucket-not-a-url\/(.*?)/gi, '$1')
+				url = await getAvttStorageUrl(decodeURI(url));
+				$(currTarget).attr('href', url);
+			}
+		}
+
+		const iframes = $newHTML.find('.journal-site-embed')
+		for (let i = 0; i < iframes.length; i++) {
+			let url = $(iframes[i]).text();
+			if (url?.includes('dropbox.com')) {
+				url = url.replace('dl=0', 'raw=1')
+			}
+			else if (url?.match(/drive\.google\.com.*\/view\?usp=/gi)) {
+				url = url.replace(/view\?usp=/gi, 'preview?usp=')
+			} else if (url?.match(/youtube.com/gi)) {
+				url = url.replace("youtube.com", "youtube-nocookie.com");
+				url = url.replace(/watch\?v=(.*)/gi, 'embed/$1');
+			} else if (url?.startsWith('above-bucket-not-a-url')) {
+				url = await getAvttStorageUrl(url);
+			}
+			encodeURI(url);
+			const newFrame = $(`<iframe class='journal-site-embed'
+						src='${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(url)}'
+						allowfullscreen
+						webkitallowfullscreen
+						mozallowfullscreen></iframe>`)
+			$(iframes[i]).replaceWith(newFrame);
+		}
+		const avttIframes = $newHTML.find('iframe[src*="src=above-bucket-not-a-url"]');
+		for (let i = 0; i < avttIframes.length; i++) {
+			const currSrc = avttIframes[i].src;
+			const urlParams = new URLSearchParams(currSrc.split('?')[1]);
+			const origSrc = urlParams.get('src');
+			const src = await getAvttStorageUrl(origSrc, true);
+			avttIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(src)}`;
+		}
+		$newHTML.find('img[data-src*="above-bucket-not-a-url"]').each(async (index, image) => {
+			const src = await getAvttStorageUrl(image.getAttribute('data-src'), true);
+			image.src = src;
+			image.href = src;
+		})
 	    $newHTML.find('.ignore-abovevtt-formating').each(function(index){
 			$(this).empty().append(ignoreFormatting[index].innerHTML);
 	    })
@@ -2265,6 +2534,7 @@ class JournalManager{
 	
 	note_visibility(id,visibility){
 		this.notes[id].player=visibility;
+
 		window.MB.sendMessage("custom/myVTT/note", {
 			note: this.notes[id],
 			id: id
@@ -2305,7 +2575,7 @@ class JournalManager{
 		$("#site-main").append(note);
 		note.dialog({
 			draggable: true,
-			width: 860,
+			width: 900,
 			height: 600,
 			position: {
 			   my: "center",
@@ -2331,8 +2601,7 @@ class JournalManager{
 		$("[role='dialog']").draggable({
 			containment: "#windowContainment",
 			start: function () {
-				$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-				$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 			},
 			stop: function () {
 				$('.iframeResizeCover').remove();			
@@ -2340,8 +2609,7 @@ class JournalManager{
 		});
 		$("[role='dialog']").resizable({
 			start: function () {
-				$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-				$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 			},
 			stop: function () {
 				$('.iframeResizeCover').remove();			
@@ -2355,7 +2623,11 @@ class JournalManager{
 		    if(editor.isDirty()){
 				let parser = new DOMParser()
 				let html = parser.parseFromString(editor.getContent(), 'text/html');
-				self.notes[id].text = $(html).find('body').html();
+				const body = $(html).find('body')// we do this to get rid of style tags used in templates that aren't needed to be stored - it was causing notes to be too large from message size limits
+				const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]');
+				avttImages.attr('src', '');
+				avttImages.attr('href', '');
+				self.notes[id].text = body.html(); 
 		    	self.notes[id].plain = editor.getContent({ format: 'text' });
 		    	self.notes[id].statBlock = statBlock;
 		    	self.persist();
@@ -2379,7 +2651,7 @@ class JournalManager{
 			.dm-eyes-only{
 				 border: 1px solid #000;
 				 border-radius: 5px;
-				 background: #f5f5f5;
+				 background: var(--background-color, #f5f5f5);
 				 padding: 0px 5px;
 				 margin: 9px 10px;
 				 display: ${window.DM ? 'block' : 'none'};
@@ -2394,7 +2666,7 @@ class JournalManager{
 				 float:right;
 				 border:1px #000 solid;
 				 border-radius:5px;
-				 background: #f5f5f5;
+				 background: var(--background-color, #f5f5f5);
 				 font-weight: bold;
 				 font-size:10px;
 				 padding:0px 4px;
@@ -2402,7 +2674,7 @@ class JournalManager{
 			.Basic-Text-Frame {
 				 clear: both;
 				 border: 1px solid #d4d0ce;
-				 background: white;
+				 background: var(--background-color, white);
 				 padding: 15px 
 			}
 			@media(min-width: 768px) {
@@ -2417,7 +2689,7 @@ class JournalManager{
 			}
 			.Basic-Text-Frame-2 {
 				 border: 1px solid #d4d0ce;
-				 background: white;
+				 background: var(--background-color, white);
 				 padding: 15px 
 			}
 			.ignore-abovevtt-formating{
@@ -2445,7 +2717,7 @@ class JournalManager{
 			}
 			.Basic-Text-Frame-3 {
 				 border: 1px solid #d4d0ce;
-				 background: white;
+				 background: var(--background-color, white);
 				 padding: 15px 
 			}
 			@media(min-width: 768px) {
@@ -2609,7 +2881,7 @@ class JournalManager{
 			/* START - New rules sidebar implementation */
 			.text--rules-sidebar {
 				 display: block !important;
-				 background-color: var(--compendium-rules-sidebar-color, #DAE4C1) !important;
+				 background-color: var(--background-color, var(--compendium-rules-sidebar-color, #DAE4C1)) !important;
 				/*Fallback: if the variable isn't declared, it'll default to pale-green*/
 				 position: relative !important;
 				 width: auto !important;
@@ -2739,7 +3011,7 @@ class JournalManager{
 				 -moz-box-shadow: 0 5px 8px 0 #aaa;
 				 box-shadow: 0 5px 8px 0 #aaa;
 				 background-position: top!important;
-				 background-image: url(https://media.dndbeyond.com/encounter-builder/static/media/stat-block-top-texture.70eb7c244ee206f35cc0.png),url(https://media.dndbeyond.com/encounter-builder/static/media/paper-texture.88243187e307464c5837.png) !important;
+				 background-image: var(--background-color, url(https://media.dndbeyond.com/encounter-builder/static/media/stat-block-top-texture.70eb7c244ee206f35cc0.png),url(https://media.dndbeyond.com/encounter-builder/static/media/paper-texture.88243187e307464c5837.png)) !important;
 				 background-size: 100%, cover !important;
 			}
 			.stat-block-background:after,.stat-block-background:before {
@@ -2754,7 +3026,7 @@ class JournalManager{
 			}
 			.block-torn-paper,.epigraph,.epigraph--with-author {
 				 overflow: auto;
-				 background: var(--theme-quote-bg-color,#fff);
+				 background: var(--background-color, var(--theme-quote-bg-color,#fff));
 				 color: var(--theme-quote-fg-color,#242527);
 				 margin: 40px 0;
 				 line-height: 1.6;
@@ -2838,13 +3110,13 @@ class JournalManager{
 			.stat-block {
 				 --compendium-p-bottom: 0;
 				 border: 1px solid #a7a3a0;
-				 background-color: #fefcef;
+				 background-color: var(--background-color, #fefcef);
 				 padding: 10px;
 				 position: relative;
 				 background-repeat: no-repeat;
 				 box-shadow: 0 5px 8px 0 var(--stat-block-shadow,#aaa);
 				 background-position: top;
-				 background: var(--stat-block-bg-override,#f6f3ee);
+				 background: var(--background-color, var(--stat-block-bg-override,#f6f3ee));
 				 font-size: 16px;
 				 line-height: 19.6px;
 				 border-radius: 8px;
@@ -3106,8 +3378,9 @@ class JournalManager{
 			    font-weight: 700;
 			}		
 			.ddbc-creature-block {
-			    background: url(https://www.dndbeyond.com/Content/Skins/Waterdeep/images/mon-summary/stat-block-top-texture.png),url(https://www.dndbeyond.com/Content/Skins/Waterdeep/images/mon-summary/paper-texture.png);
-			    background-size: 100% auto;
+				--image-background: url(https://www.dndbeyond.com/Content/Skins/Waterdeep/images/mon-summary/stat-block-top-texture.png),url(https://www.dndbeyond.com/Content/Skins/Waterdeep/images/mon-summary/paper-texture.png);
+				background: var(--background-color, var(--image-background));
+			   	background-size: 100% auto;
 			    background-position: top;
 			    background-repeat: no-repeat,repeat;
 			    position: relative;
@@ -3115,7 +3388,8 @@ class JournalManager{
 			    border: 1px solid #d4d0ce;
 			    padding: 15px 10px;
 			    font-family: Scala Sans Offc,Roboto,Helvetica,sans-serif;
-			    font-size: 15px
+			    font-size: 15px;
+
 			}
 
 			.ddbc-creature-block:after,.ddbc-creature-block:before {
@@ -3255,6 +3529,7 @@ class JournalManager{
 		tinyMCE.init({
 			selector: '#' + tmp,
 			menubar: false,
+			end_container_on_empty_block: true,
 			style_formats:  [
 				 { title: 'Headers', items: [
 			      { title: 'h1', block: 'h1' },
@@ -3437,7 +3712,7 @@ class JournalManager{
 			    },
 			],
 		  	table_grid: false,
-			toolbar: 'undo styleselect template | horizontalrules | bold italic underline strikethrough | alignleft aligncenter alignright justify| outdent indent | bullist numlist | forecolor backcolor | fontsizeselect | link unlink | image media table tableCustom | code',
+			toolbar: 'undo styleselect template | horizontalrules | bold italic underline strikethrough | alignleft aligncenter alignright justify| outdent indent | bullist numlist | forecolor backcolor | fontsizeselect | link unlink | image media filePickers table tableCustom | code',
 			image_class_list: [
 				{title: 'Magnify', value: 'magnify'},
 			],
@@ -3470,31 +3745,219 @@ class JournalManager{
 				        ],
 				      onclick: (e) => {e.preventDefault(); e.stopPropagation(); editor.insertContent(`<img class="mon-stat-block__separator-img" alt="" src="https://www.dndbeyond.com/file-attachments/0/579/stat-block-header-bar.svg"/>`)},
 				    });
+
+				editor.addButton('filePickers', {
+					type: 'splitbutton',
+					text: '',
+					icon: 'upload',
+					tooltip: 'Upload/Select File From File Picker',
+					menu: [
+						{
+							text: "Azmoria's AboveVTT File Picker",
+							onclick: (e) => { 
+								e.preventDefault();
+								e.stopPropagation(); 
+								launchFilePicker(async function (files) {
+									try {
+										for (let i = 0; i < files.length; i++) {
+											const fileType = files[i].type;
+											const link = files[i].link;
+
+											if (fileType === avttFilePickerTypes.IMAGE) {
+												tinymce.activeEditor.insertContent(`<img class="magnify" alt="" data-src="${link}" />`);
+											} else if (fileType === avttFilePickerTypes.VIDEO) {
+												tinymce.activeEditor.insertContent(`<video controls="controls" width="100%" height="auto"><source src="${link}" /></video>`);
+											} else if (fileType === avttFilePickerTypes.AUDIO) {
+												tinymce.activeEditor.insertContent(`<audio controls src="${link}"></audio>`);
+											} else {
+												tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link}'
+												allowfullscreen
+												webkitallowfullscreen
+												mozallowfullscreen></iframe>`);
+											}
+										}
+									} catch (error) {
+										console.error("Failed to import from AVTT File Picker selection", error);
+										alert(error?.message || "Failed to import selection from AVTT. See console for details.");
+									}
+								}, undefined,
+								async function (files) {
+									try {
+										for (let i = 0; i < files.length; i++) {
+											const link = files[i].link;
+											tinymce.activeEditor.insertContent(`<span class="journal-site-embed">${link}</span>`);
+										}
+									}
+									catch (error) {
+										console.error("Failed to import from AVTT File Picker selection", error);
+										alert(error?.message || "Failed to import selection from AVTT. See console for details.");
+									}
+								});
+							},
+						},
+						{
+							text: "Dropbox - Insert Image/Video/Audio",
+							onclick: (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								const dropboxOptions = dropBoxOptions(function (links) {
+									for (let i = 0; i < links.length; i++) {
+										const link = parse_img(links[i].link);
+										const extension = links[i].link.split('?')[0].match(/.*\.(.*)?$/i)?.[1];
+										if (allowedImageTypes.includes(extension)) {
+											tinymce.activeEditor.insertContent(`<img class="magnify" alt="" src='${link}' />`);
+										} else if (allowedVideoTypes.includes(extension)) {
+											tinymce.activeEditor.insertContent(`<video controls="controls" width="100%" height="auto"><source src="${link}"/></video>`);
+										} else if (allowedAudioTypes.includes(extension)) {
+											tinymce.activeEditor.insertContent(`<audio controls src="${link}"></audio>`);
+										}
+									}
+								}, true, ['images','video','audio'], false);
+								Dropbox.choose(dropboxOptions)
+							},
+						},
+						{
+							text: "Dropbox - Site Embed",
+							onclick: (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								const dropboxOptions = dropBoxOptions(function (links) {
+									for (let i = 0; i < links.length; i++) {
+										const link = links[i].link;
+										tinymce.activeEditor.insertContent(`<span class="journal-site-embed">${link}</span>`);
+									}
+								}, false, ['images', 'video', 'audio', 'document', 'text'], false);
+								Dropbox.choose(dropboxOptions)
+							},
+						},
+						{
+							text: "OneDrive - Insert Image",
+							onclick: (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								launchPicker(e, function (links) {
+									for (let i = 0; i < links.length; i++) {
+										const link = parse_img(links[i].link);
+										tinymce.activeEditor.insertContent(`<img class="magnify" alt="" src='${link}' />`);
+									}
+								}, 'multiple', ['photo', '.webp']);
+							},
+						},
+						{
+							text: "OneDrive - Site Embed",
+							onclick: (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								launchPicker(e, function (links) {
+									for (let i = 0; i < links.length; i++) {
+										const link = links[i].link;
+										tinymce.activeEditor.insertContent(`<span class="journal-site-embed">${link}</span>`);
+									}
+								}, 'single', ['files']);
+							},
+						}
+					],
+					onclick: (e) => { 
+						e.preventDefault();
+						e.stopPropagation();
+						launchFilePicker(async function (files) {
+							try {
+								for (let i = 0; i < files.length; i++) {
+									const fileType = files[i].type;
+									const link = files[i].link;
+
+									if (fileType === avttFilePickerTypes.IMAGE) {
+										tinymce.activeEditor.insertContent(`<img class="magnify" alt="" data-src="${link}" />`);
+									} else if (fileType === avttFilePickerTypes.VIDEO) {
+										tinymce.activeEditor.insertContent(`<video controls="controls" width="100%" height="auto"><source src="${link}" /></video>`);
+									} else if (fileType === avttFilePickerTypes.AUDIO) {
+										tinymce.activeEditor.insertContent(`<audio controls src="${link}"></audio>`);
+									} else {
+										tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link}'
+												allowfullscreen
+												webkitallowfullscreen
+												mozallowfullscreen></iframe>`);
+									}
+								}
+							} catch (error) {
+								console.error("Failed to import from AVTT File Picker selection", error);
+								alert(error?.message || "Failed to import selection from AVTT. See console for details.");
+							}
+						}, undefined,
+							async function (files) {
+								try {
+									for (let i = 0; i < files.length; i++) {
+										const link = files[i].link;
+										tinymce.activeEditor.insertContent(`<span class="journal-site-embed">${link}</span>`);
+									}
+								}
+								catch (error) {
+									console.error("Failed to import from AVTT File Picker selection", error);
+									alert(error?.message || "Failed to import selection from AVTT. See console for details.");
+								}
+							});
+						},
+				});
+				editor.addCommand('setAvttImageSrc', function (e) {
+					const body = e.target.contentDocument?.body != undefined ? $(e.target.contentDocument.body) : $(e.target);
+					const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]:not([src^="above-bucket-not-a-url"])');
+					avttImages.each(async (index, image) => {
+						const src = await getAvttStorageUrl(image.getAttribute('data-src'), true);
+						image.src = src;
+					})
+					const avttImages2 = body.find('img[src^="above-bucket-not-a-url"]');
+					avttImages2.each(async (index, image) => {
+						const origSrc = image.getAttribute('src');
+						const src = await getAvttStorageUrl(origSrc, true);
+						image.setAttribute('data-src', origSrc)
+						image.src = src;
+					})
+
+					if (editor.isDirty()) {
+						debounceNoteSave(e, editor);
+					}
+				});
+				editor.on('init', function (e) {
+					const body = $(e.target.contentDocument.body);
+					const backgroundColor = $(':root').css('--background-color'); // support azmoria's dark mode without requiring inverse filters
+					const fontColor = $(':root').css('--font-color');
+					if(backgroundColor && fontColor){
+						body.css({
+							background: backgroundColor,
+							color: fontColor,
+							'--font-color': fontColor,
+							'--background-color': backgroundColor
+						});
+					}
+
+					editor.execCommand('setAvttImageSrc', e);
+				});
+
 				editor.on('NodeChange', async function (e) {
 					// When an image is inserted into the editor
 				    if (e.element.tagName === "IMG") { 
 				    	let url = e.element.getAttribute('src');
 				    	if (url.startsWith("https://drive.google.com") && url.indexOf("uc?id=") < 0) {
 		                    const parsed = 'https://drive.google.com/uc?id=' + url.split('/')[5];
-		                    console.log("parse drive audio is converting", url, "to", parsed);
 		                    url = parsed;
 		                }
 		                else if(url.includes('dropbox.com')){       
 		                    const splitUrl = url.split('dropbox.com');
 		                    const parsed = `https://dl.dropboxusercontent.com${splitUrl[splitUrl.length-1]}`
-		                    console.log("parse dropbox audio is converting", url, "to", parsed);
 		                    url = parsed;
 		                }
-
+						else if (url.includes('above-bucket-not-a-url')) {
+							const splitUrl = url.match(/above-bucket-not-a-url.*$/gi)?.[0];
+							e.element.setAttribute("data-src", splitUrl);
+							url = await getAvttStorageUrl(splitUrl, true);	
+						}
 				        e.element.setAttribute("src", await getGoogleDriveAPILink(url));
 				        return; 
 				    }
 				    return;
 				});
 				editor.on('change keyup', async function(e){
-				    if(editor.isDirty()){
-				    	debounceNoteSave(e, editor);
-				    }
+					editor.execCommand('setAvttImageSrc', e);
 				});
 			},
 			relative_urls : false,
@@ -3509,7 +3972,11 @@ class JournalManager{
 				let note_id = $(this.getElement()).attr('data-note-id');
 				let parser = new DOMParser();
 				let html = parser.parseFromString(tinymce.activeEditor.getContent(), 'text/html');
-				self.notes[note_id].text = $(html).find('body').html(); // we do this to get rid of style tags used in templates that aren't needed to be stored - it was causing notes to be too large from message size limits
+				const body = $(html).find('body')// we do this to get rid of style tags used in templates that aren't needed to be stored - it was causing notes to be too large from message size limits
+				const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]');
+				avttImages.attr('src', '');
+				avttImages.attr('href', '');
+				self.notes[note_id].text = body.html(); 
 				self.notes[note_id].plain = tinymce.activeEditor.getContent({ format: 'text' });
 				self.notes[note_id].statBlock = statBlock;
 				self.persist();
@@ -3525,7 +3992,7 @@ class JournalManager{
 				
 			}
 		});
-				
+		note.parent().css('height', '600px');		
 	}
 }
 
@@ -3556,10 +4023,11 @@ function init_journal(gameid){
 }
 
 function render_source_chapter_in_iframe(url) {
+	url = url.replace('https://dndbeyond', 'https://www.dndbeyond');
 	const sourceChapter = url.startsWith('https://www.dndbeyond.com/sources/') || url.startsWith('/sources/');
 	const compendiumChapter = url.startsWith('https://www.dndbeyond.com/compendium/') || url.startsWith('/compendium/');
 	const attachmentChapter = url.startsWith('https://www.dndbeyond.com/attachments/') || url.startsWith('/attachments/');
-	const rulesChapter = url.startsWith('https://dndbeyond.com/magic-items') || url.startsWith('https://dndbeyond.com/feats') || url.startsWith('https://dndbeyond.com/spells')
+	const rulesChapter = url.startsWith('https://www.dndbeyond.com/magic-items') || url.startsWith('https://www.dndbeyond.com/feats') || url.startsWith('https://www.dndbeyond.com/spells')
 	if (typeof url !== "string" ||  (!sourceChapter && !compendiumChapter && !attachmentChapter && !rulesChapter)) {
 		console.error(`render_source_chapter_in_iframe was given an invalid url`, url);
 		showError(new Error(`Unable to render a DDB chapter. This url does not appear to be a valid DDB chapter ${url}`));
@@ -3572,6 +4040,7 @@ function render_source_chapter_in_iframe(url) {
 			url = `${url}?filter-partnered-content=t`
 		}
 	}
+	
 	const chapterHash = url.split("#")?.[1];
 	const iframeId = 'sourceChapterIframe';
 	const containerId = `${iframeId}_resizeDrag`;

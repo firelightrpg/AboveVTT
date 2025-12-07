@@ -46,17 +46,24 @@ $(function() {
         return window.CAMPAIGN_INFO.dmId;
       })
       .then((campaignDmId) => {
-
-
-        const userId = $(`#message-broker-client[data-userid]`)?.attr('data-userid');
         const isDmPage = is_encounters_page();
-
-
-        if (isDmPage && campaignDmId == userId) {
+        const isSpectator = is_spectator_page();
+        const userId = $(`#message-broker-client[data-userid]`)?.attr('data-userid') || Cobalt?.User?.ID;
+        if ((isDmPage && campaignDmId == userId) || isSpectator) {
           inject_dice();
+        }
+        return { campaignDmId, userId, isDmPage, isSpectator };
+      })
+      .then((data) => {
+        const { campaignDmId, userId, isDmPage, isSpectator } = data;  
+        if (isDmPage && campaignDmId == userId) {
           startup_step("Starting AboveVTT for DM");
           return start_above_vtt_for_dm();
         } 
+        else if (isSpectator){
+          startup_step("Starting AboveVTT for Spectator");
+          return start_above_vtt_for_spectator();
+        }
         else if(isDmPage){
           startup_step("Player joining as DM")
           return start_player_joining_as_dm();
@@ -83,6 +90,7 @@ $(function() {
         }
         $('body').toggleClass('reduceMovement', (window.EXPERIMENTAL_SETTINGS['reduceMovement'] == true));
         $('body').toggleClass('mobileAVTTUI', (window.EXPERIMENTAL_SETTINGS['iconUi'] == true));
+        $('body').toggleClass('color-blind-avtt', (window.EXPERIMENTAL_SETTINGS['colorBlindText'] == true));
           // STREAMING STUFF
 
         window.STREAMPEERS = {};
@@ -306,6 +314,7 @@ function addExtensionPathStyles(){ // some above server images moved out of exte
     body{
       --onedrive-svg: url('${window.EXTENSION_PATH}images/Onedrive_icon.svg');
       --onedrive-mask: url('${window.EXTENSION_PATH}images/Onedrive_icon.png');
+      --avtt-mask: url('${window.EXTENSION_PATH}assets/avtt-logo.png');
     }
   </style>`
 
@@ -338,6 +347,7 @@ async function start_above_vtt_common() {
   window.REVEALED = [];
   window.TOKEN_CUSTOMIZATIONS = [];
   window.TOKEN_OBJECTS = {};
+  window.ON_SCREEN_TOKENS = {};
   window.TOKEN_OBJECTS_RECENTLY_DELETED = {};
   window.TOKEN_PASTE_BUFFER = [];
   window.TOKEN_SETTINGS = $.parseJSON(localStorage.getItem(`TokenSettings${window.gameId}`)) || {};
@@ -348,7 +358,7 @@ async function start_above_vtt_common() {
   
   await load_external_script("https://www.youtube.com/iframe_api");
   $("#site").append("<div id='windowContainment'></div>");
-
+  $("body").append(`<style>.ddb-footer{display:none}</style>`);
   startup_step("Gathering player character data");
   await rebuild_window_pcs();
   window.color = color_for_player_id(my_player_id()); // shortcut that we should figure out how to not rely on
@@ -378,7 +388,7 @@ async function start_above_vtt_common() {
   return true;
 }
 function start_player_joining_as_dm(){
-  if (!is_abovevtt_page() || !is_encounters_page() || !window.DM) {
+  if (!is_abovevtt_page() || !is_encounters_page() || !window.DM ){
     throw new Error(`start_above_vtt_for_dm cannot start on ${window.location.href}; window.DM: ${window.DM}`);
   }
   //This is not supported at the moment, if supported the DM should have to choose who can be co-dm - judge people trying to cheat
@@ -402,13 +412,13 @@ function start_player_joining_as_dm(){
         border-radius:5px;
     ">
       <span style="
+      color: #ddd;
       font-size: 25px;
       text-shadow: 1px 0px #000, 0px 1px #000, -1px 0px #000, 0px -1px #000, 1px 1px #000, -1px -1px #000, -1px 1px #000, 1px -1px #000; 
       ">It is not currently possible to join as DM from a player account.</span>
     </div>`);
 
   $('body').append(message);
-  remove_loading_overlay();
   $('#splash').remove();
   $(window).one('click.messageRremove', function(){
     message.remove();
@@ -440,10 +450,7 @@ async function start_above_vtt_for_dm() {
   await start_above_vtt_common();
   window.CONNECTED_PLAYERS['0'] = window.AVTT_VERSION; // ID==0 is DM
 
-  startup_step("Fetching scenes from cloud");
   window.ScenesHandler = new ScenesHandler();
-  window.ScenesHandler.scenes = await AboveApi.getSceneList();
-  await migrate_to_cloud_if_necessary();
 
   startup_step("Fetching Encounters from DDB");
   const avttId = window.location.pathname.split("/").pop();
@@ -460,13 +467,17 @@ async function start_above_vtt_for_dm() {
   $(".dice-rolling-panel").css({"visibility": "visible"});
   $("div.sidebar").parent().css({"display": "block", "visibility": "visible"});
   $("#ddbeb-popup-container").css({"display": "block", "visibility": "visible"});
+  $('#noty_layout__bottomRight').remove();
   init_ui();
 
   startup_step("Fetching scenes from AboveVTT servers");
-  let activeScene = await fetch_sceneList_and_scenes();
 
+  let activeScene = await fetch_sceneList_and_scenes();
+  await migrate_to_cloud_if_necessary();
+  startup_step("Loading scenes");
+  did_update_scenes();
   startup_step("Migrating scene folders");
-  await migrate_scene_folders();
+  migrate_scene_folders();
 
   if (activeScene) {
     if(activeScene.data.playlist != undefined && activeScene.data.playlist != 0 && window.MIXER.state().playlists[activeScene.data.playlist] != undefined){
@@ -474,17 +485,76 @@ async function start_above_vtt_for_dm() {
     }
   }
 
-  did_update_scenes();
+
+  startup_step("Loading Tokens");
+  await rebuild_token_items_list()
+  filter_token_list("");
+
 
   startup_step("Start up complete");
   window.MB.sendMessage("custom/myVTT/DMAvatar", {
     avatar: dmAvatarUrl
   })
   $(window).off('scroll.projectorMode').on("scroll.projectorMode", projector_scroll_event);
-  remove_loading_overlay();
   inject_chat_buttons();
   inject_dm_roll_default_menu();
   
+}
+async function start_above_vtt_for_spectator() {
+  if (!is_spectator_page()) {
+    throw new Error(`start_above_vtt_for_spectoator cannot start on ${window.location.href}; Is Spectator: ${is_spectator_page() }`);
+  }
+
+  //These functions are removed to stop issues with running on the campaign page and loops/extending objects via $.extend. 
+  //We can look at other ways to fix our code so this isn't needed. I've already moved off for...in loops I could find that were targeting arrays.
+  delete Array.prototype.clean
+  delete Array.prototype.distinct
+  delete Array.prototype.each
+  delete Array.prototype.sortBy
+
+  window.document.title = `AVTT Spectator ${window.document.title}`
+  $('meta[name="viewport"]').attr('content', 'width=device-width, initial-scale=1.0, user-scalable=no')
+  const playerId = `spectator-${window.gameId}`;
+  window.PLAYER_ID = playerId;
+  window.PLAYER_IMG = dmAvatarUrl;
+  window.PLAYER_NAME = playerId;
+  window.PLAYER_SHEET = playerId;
+  $(".sidebar__control").click(); // 15/03/2022 .. DDB broke the gamelog button.
+  $(".sidebar__control--lock").closest("button").click(); // lock it open immediately. This is safe to call multiple times
+  $("body").toggleClass("avtt-spectator-sheet", true);
+  $('#noty_layout__bottomRight').remove();
+  await start_above_vtt_common();
+  window.CONNECTED_PLAYERS['0'] = window.AVTT_VERSION; // ID==0 is DM
+
+ 
+
+  startup_step("Setting up UI");
+  // This brings in the styles that are loaded on the character sheet to support the "send to gamelog" feature.
+  $("body").append(`<link rel="stylesheet" type="text/css" href="https://media.dndbeyond.com/character-tools/styles.bba89e51f2a645f81abb.min.css" >`);
+  $("#site-main").css({ "display": "block", "visibility": "hidden" });
+  $('.page-header, .ddb-campaigns-detail-body, .ddb-campaigns-detail-header').remove();
+  $(".dice-rolling-panel").css({ "visibility": "visible" });
+  $("div.sidebar").parent().css({ "display": "block", "visibility": "visible" });
+  $("#ddbeb-popup-container").css({ "display": "block", "visibility": "visible" });
+  init_ui();
+  if (get_avtt_setting_value('quickToggleDefaults')?.spectatorHideUi) {
+    unhide_interface();
+  }
+  inject_chat_buttons();
+  inject_dm_roll_default_menu();
+  startup_step("Fetching scene from AboveVTT server");
+  const currentSceneData = await AboveApi.getCurrentScene();
+  if (currentSceneData.playerscene) {
+    window.startupSceneId = currentSceneData.playerscene;
+    const activeScene = await AboveApi.getScene(currentSceneData.playerscene);
+    console.log("attempting to handle scene", activeScene);
+    startup_step("Loading Scene");
+    window.MB.handleScene(activeScene);
+    startup_step("Start up complete");
+  } else {
+    console.error("There isn't a player map! we need to display something!");
+    startup_step("Start up complete. Waiting for DM to send us a map");
+  }
 }
 const debounceResizeUI = mydebounce(function(){
   init_character_page_sidebar();
@@ -495,7 +565,7 @@ const debounceResizeUI = mydebounce(function(){
 }, 100)
 
 function inject_dm_roll_default_menu(){
-  if(!window.DM)
+  if(!window.DM && !is_spectator_page())
     return;
   const gamelogTitle = $('.glc-game-log>[class*="-Container-Flex"]>[class*="-Title"]');
   const flexContainer = $('<div class="tss-ko5p4u-Flex"></div>');
@@ -949,7 +1019,7 @@ function inject_dm_roll_default_menu(){
 }
 
 async function start_above_vtt_for_players() {
-  if (!is_abovevtt_page() || !is_characters_page() || window.DM) {
+  if (!is_spectator_page() && (!is_abovevtt_page() || !is_characters_page() || window.DM)) {
     throw new Error(`start_above_vtt_for_players cannot start on ${window.location.href}; window.DM: ${window.DM}`);
   }
   
@@ -975,6 +1045,18 @@ async function start_above_vtt_for_players() {
     if(!window.CURRENT_SCENE_DATA.is_video || !window.CURRENT_SCENE_DATA.player_map.includes('youtu')){
       $("#youtube_controls_button").css('visibility', 'hidden');
     }
+    if ($('.stream-dice-button').length == 0){
+      $(".glc-game-log>[class*='Container-Flex']").append($(`<div id="stream_dice"><div class='stream-dice-button ${window.JOINTHEDICESTREAM ? `enabled` : ``}'>Dice Stream ${window.JOINTHEDICESTREAM ? `Enabled` : `Disabled`}</div></div>`));
+      $(".stream-dice-button").off().on("click", function () {
+        if (window.JOINTHEDICESTREAM) {
+          update_dice_streaming_feature(false);
+        }
+        else {
+          update_dice_streaming_feature(true);
+        }
+      })
+    }
+     
   });
 
   /*prevents repainting due to ddb adjusting player sheet classes and throttling it*/
@@ -1004,10 +1086,6 @@ async function start_above_vtt_for_players() {
   }
 }
 
-function startup_step(stepDescription) {
-  console.log(`startup_step ${stepDescription}`);
-  $("#loading-overlay-beholder > .sidebar-panel-loading-indicator > .loading-status-indicator__subtext").text(stepDescription);
-}
 
 async function lock_character_gamelog_open() {
   if ($(".ct-sidebar__portal").length == 0) {
@@ -1039,8 +1117,7 @@ async function migrate_to_cloud_if_necessary() {
 
   // this is a fresh campaign so let's push our Tavern Scene
   startup_step("Migrating to AboveVTT cloud");
-  // TODO: replace this with the new tutorial map
-  await AboveApi.migrateScenes(window.gameId, [
+  const tavernData = [
     {
       ...default_scene_data(),
       title: "The Tavern",
@@ -1061,9 +1138,13 @@ async function migrate_to_cloud_if_necessary() {
       offsetx: 29,
       offsety: 54,
     }
-  ]);
-  // now fetch the scenes from the server
-  window.ScenesHandler.scenes = await AboveApi.getSceneList();
+  ];
+  await AboveApi.migrateScenes(window.gameId, tavernData);
+
+  window.MB.sendMessage("custom/myVTT/switch_scene", { sceneId: tavernData[0].id });
+  window.PLAYER_SCENE_ID = tavernData[0].id;
+  const activeScene = await fetch_sceneList_and_scenes(); 
+  return activeScene;
 }
 
 // only call this once on startup
@@ -1075,11 +1156,7 @@ async function fetch_sceneList_and_scenes() {
 
   if (currentSceneData.playerscene && window.ScenesHandler.scenes.find(s => s.id === currentSceneData.playerscene)) {
     window.PLAYER_SCENE_ID = currentSceneData.playerscene;
-  } else if (window.ScenesHandler.scenes.length > 0) {
-    window.PLAYER_SCENE_ID = window.ScenesHandler.scenes[0].id;
-    console.log("fetch_sceneList_and_scenes sending custom/myVTT/switch_scene", { sceneId: window.ScenesHandler.scenes[0].id });
-    // window.MB.sendMessage("custom/myVTT/switch_scene", { sceneId: window.ScenesHandler.scenes[0].id });
-  }
+  } 
 
   console.log("fetch_sceneList_and_scenes set window.PLAYER_SCENE_ID to", window.PLAYER_SCENE_ID);
 
@@ -1092,7 +1169,8 @@ async function fetch_sceneList_and_scenes() {
     activeScene = await AboveApi.getScene(window.ScenesHandler.scenes[0].id);
     console.log("attempting to handle scene", activeScene);
   }
-  window.MB.handleScene(activeScene);
+  if(activeScene)
+    window.MB.handleScene(activeScene);
   console.log("fetch_sceneList_and_scenes done");
   return activeScene;
 }

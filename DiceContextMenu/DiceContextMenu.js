@@ -19,8 +19,11 @@ function standard_dice_context_menu(expression, modifierString = "", action = un
     
     menu.sendToSection();
     let additionalDiceExpression='';
-    if (expression === "1d20" || /^1d20/gi.test(expression)) {
+    if (expression === "1d20" || /^1d20/gi.test(expression) || expression === "2d20kh1" || /^2d20kh1/gi.test(expression)) {
         // only add advantage/disadvantage options if rolling 1d20
+        if (expression === "2d20kh1" || /^2d20kh1/gi.test(expression)){
+            expression = expression.replace(/^2d20kh1/gi, '1d20');
+        }
         menu.section("ROLL WITH:", s => s
             .row("Super Advantage", `${svg_advantage()}${svg_advantage()}`, false)
             .row("Advantage", svg_advantage(), false)
@@ -113,8 +116,8 @@ function damage_dice_context_menu(diceExpression, modifierString = "", action = 
             } 
              else if (rollAsIndex === 1) {
                 // perfect crit damage
-                diceExpression = diceExpression.replaceAll(/([+-])?([\d]+)d([\d]+)/gi, function(m, m1, m2, m3){
-                    return `${m}${m1 == '-' ? '' : `+${parseInt(m2)*parseInt(m3)}`}`
+                diceExpression = diceExpression.replaceAll(/(([+-])?([\d]+)d([\d]+).*?)([+-]|$)/gi, function(m, m1, m2, m3, m4, m5){
+                    return `${m1}${m2 == '-' ? '' : `+${parseInt(m3)*parseInt(m4)}${m5}`}`
                 })
                 diceRoll = new DiceRoll(diceExpression)
             } 

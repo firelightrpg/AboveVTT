@@ -87,12 +87,10 @@ function close_token_context_menu() {
 
 function select_tokens_in_aoe(aoeTokens, selectPlayerTokens = true){
 	deselect_all_tokens();
-	let canvas = document.createElement('canvas');
-	let ctx = canvas.getContext('2d', { willReadFrequently: true }); //rare case where we can allow cpu do so all the lifting since it is not rendered
 	let rayCast = document.getElementById("raycastingCanvas");
-
-	canvas.width = rayCast.width;
-	canvas.height = rayCast.height;
+	let canvas = new OffscreenCanvas(rayCast.width, rayCast.height);
+	let ctx = canvas.getContext('2d', { willReadFrequently: true }); //rare case where we can allow cpu do so all the lifting since it is not rendered
+	
 
 
 	ctx.globalCompositeOperation='source-over';
@@ -183,8 +181,7 @@ function token_context_menu_expanded(tokenIds, e) {
 		scroll: false,
 		handle: "div:not(:has(select)), button, label, input",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -210,7 +207,8 @@ function token_context_menu_expanded(tokenIds, e) {
 					imgsrc: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=`,
 					type: 'door',
 					size: 50,
-					scaleCreated: window.CURRENT_SCENE_DATA.scale_factor
+					scaleCreated: window.CURRENT_SCENE_DATA.scale_factor,
+					auraislight: false
 				};
 				window.ScenesHandler.create_update_token(options)
 			}
@@ -1163,7 +1161,7 @@ function token_context_menu_expanded(tokenIds, e) {
 							window.MB.sendMessage('custom/myVTT/token', options);
 						}, 300);
 						t.place_sync_persist();
-						ct_add_token(window.TOKEN_OBJECTS[group], false, clickEvent.shiftKey, clickEvent.ctrlKey)	
+						ct_add_token(window.TOKEN_OBJECTS[group], false, undefined, clickEvent.shiftKey, clickEvent.ctrlKey)	
 					
 					}
 				}
@@ -1272,7 +1270,7 @@ function token_context_menu_expanded(tokenIds, e) {
 					window.MB.sendMessage('custom/myVTT/token', options);
 				}, 300);
 				t.place_sync_persist();
-				ct_add_token(window.TOKEN_OBJECTS[group], false, clickEvent.shiftKey, clickEvent.ctrlKey)
+				ct_add_token(window.TOKEN_OBJECTS[group], false, undefined, clickEvent.shiftKey, clickEvent.ctrlKey)
 			}
 		debounceCombatReorder();
 		});
@@ -1452,7 +1450,9 @@ function token_context_menu_expanded(tokenIds, e) {
 			    tokenImage.find('img').attr('data-basic-avatar-url', largeAvatar);
 			    tokenImage.find('img').attr('data-current-avatar-url', "largeAvatarUrl");
 			}
-			let tokenImage = $(`<div class="image" style="display: block; max-width:100%;"><${(token.options.videoToken == true || ['.mp4', '.webm','.m4v'].some(d => token.options.imgsrc.includes(d))) ? 'video disableremoteplayback muted' : 'img'} class='magnify' style='max-width:100%;' href='${token.options.imgsrc}' src='${token.options.imgsrc}'/>  </div>`);
+
+			const imageSrc = token.options.imgsrc.startsWith('above-bucket-not-a-url') ? await getAvttStorageUrl(token.options.imgsrc) : token.options.imgsrc;
+			let tokenImage = $(`<div class="image" style="display: block; max-width:100%;"><${(token.options.videoToken == true || ['.mp4', '.webm', '.m4v'].some(d => imageSrc.includes(d))) ? 'video disableremoteplayback muted' : 'img'} class='magnify' style='max-width:100%;' href='${imageSrc}' src='${imageSrc}'/>  </div>`);
 			
 			if(typeof token.options.monster == 'number' && token.options.itemType == 'monster' && token.options.alternativeImages == undefined){
 
@@ -1640,7 +1640,10 @@ function token_context_menu_expanded(tokenIds, e) {
 		})
 
 	});
-	if(window.DM || (tokens.length == 1 && (tokens[0].options.player_owned == true || tokens[0].isPlayer()))){
+	const allPlayerOwned = !tokens.some(d => {return d.options.player_owned != true && !d.isPlayer()});
+
+
+	if (window.DM || allPlayerOwned == true || allTokensAreAoe){
 		body.append(adjustmentsRow);
 	}
 	if(window.DM) {
@@ -3444,10 +3447,6 @@ function build_adjustments_flyout_menu(tokenIds) {
 			return;
 		}
 		tokens.forEach(token => {			
-			// Reset imageScale if new size is larger
-			if(token.options.size < newSize) {
-				token.imageSize(1);
-			}
 			token.size(newSize, linewidth);
 			clampTokenImageSize(token.options.imageSize, token.options.size);
 		});
@@ -3495,8 +3494,8 @@ function build_adjustments_flyout_menu(tokenIds) {
 				token.options.offset = {x: 0, y:0};
 				token.options.offset.x = offsetX;
 				$(`.VTTToken[data-id='${token.options.id}']`).css({
-					"--offsetX": `${parseFloat(offsetX) * token.options.gridSquares}px`,
-					"--offsetY": `${parseFloat(token.options.offset.y) * token.options.gridSquares}px`
+					"--offsetX": `${parseFloat(offsetX) / 90 * token.options.size}px`,
+					"--offsetY": `${parseFloat(token.options.offset.y) / 90 * token.options.size}px`
 				})
 
 				if(persist)
@@ -3516,8 +3515,8 @@ function build_adjustments_flyout_menu(tokenIds) {
 					token.options.offset = {x: 0, y:0};
 				token.options.offset.y = offsetY;
 				$(`.VTTToken[data-id='${token.options.id}']`).css({
-					"--offsetX": `${parseFloat(token.options.offset.x) * token.options.gridSquares}px`,
-					"--offsetY": `${parseFloat(offsetY) * token.options.gridSquares}px`
+					"--offsetX": `${parseFloat(token.options.offset.x) / 90 * token.options.size}px`,
+					"--offsetY": `${parseFloat(offsetY) / 90 * token.options.size}px`
 				})
 				if(persist)
 					token.place_sync_persist();
@@ -3578,91 +3577,104 @@ function build_adjustments_flyout_menu(tokenIds) {
 
 
 	}
-	if(window.DM){
-		let token_settings = token_setting_options();
-		if (tokens.length === 1 && !tokens[0].isPlayer()){
-			let removename = "hidestat";
-			token_settings = $.grep(token_settings, function(e){
-			     return e.name != removename;
-			});
-		}
-		for (let i = 0; i < tokens.length; i++) {
-		    if(tokens[i].isPlayer()){
-		    	player_selected = true;
-		    	break;
-		    }
-		}
-		if (player_selected){
-			let removename = "player_owned";
-			token_settings = $.grep(token_settings, function(e){
-			     return e.name != removename;
-			});
-		}
-		for(let i = 0; i < token_settings.length; i++) {
-			let setting = token_settings[i];
-			if (allTokensAreAoe && !availableToAoe.includes(setting.name)) {
-				continue;
-			} else if(setting.hiddenSetting || setting.name == 'maxAge' || setting.name == 'defaultmaxhptype' || setting.name == 'placeType' || setting.globalSettingOnly || setting.name == 'lockRestrictDrop' || setting.name == 'hidden' ) {
-				continue;
-			}
 
-			let tokenSettings = tokens.map(t => t.options[setting.name]);
-			let uniqueSettings = [...new Set(tokenSettings)].filter(d => d != undefined);
-			let currentValue = null; // passing null will set the switch as unknown; undefined is the same as false
-			if (uniqueSettings.length === 1) {
-				currentValue = uniqueSettings[0];
-			}	else if(uniqueSettings.length === 0){
-				currentValue = undefined;
-			}
+	let token_settings = token_setting_options();
+	if (tokens.length === 1 && !tokens[0].isPlayer()){
+		let removename = "hidestat";
+		token_settings = $.grep(token_settings, function(e){
+				return e.name != removename;
+		});
+	}
+	for (let i = 0; i < tokens.length; i++) {
+		if(tokens[i].isPlayer()){
+			player_selected = true;
+			break;
+		}
+	}
+	if (player_selected){
+		let removename = "player_owned";
+		token_settings = $.grep(token_settings, function(e){
+				return e.name != removename;
+		});
+	}
+	if (!window.DM) {
+		token_settings = $.grep(token_settings, function (e) {
+			return e.player == true;
+		});
+	}
+	for(let i = 0; i < token_settings.length; i++) {
+		let setting = token_settings[i];
+		if (allTokensAreAoe && !availableToAoe.includes(setting.name)) {
+			continue;
+		} else if(setting.hiddenSetting || setting.name == 'maxAge' || setting.name == 'defaultmaxhptype' || setting.name == 'placeType' || setting.globalSettingOnly || setting.name == 'lockRestrictDrop' || setting.name == 'hidden' ) {
+			continue;
+		}
+
+		let tokenSettings = tokens.map(t => t.options[setting.name]);
+		let uniqueSettings = [...new Set(tokenSettings)].filter(d => d != undefined);
+		let currentValue = null; // passing null will set the switch as unknown; undefined is the same as false
+		if (uniqueSettings.length === 1) {
+			currentValue = uniqueSettings[0];
+		}	else if(uniqueSettings.length === 0){
+			currentValue = undefined;
+		}
 
 
-			if (setting.type === "dropdown") {
-				let inputWrapper = build_dropdown_input(setting, currentValue, function(name, newValue) {
-					tokens.forEach(token => {
-						token.options[name] = newValue;
-						token.place_sync_persist();
-					});
-					if(setting.name =='tokenStyleSelect'){		
-						for(let j=0; j<token_settings.length; j++){
-							let setting = token_settings[j];
-							if(setting.type === "toggle"){
-								let tokenSettings = tokens.map(t => t.options[setting.name]);
-								let uniqueSettings = [...new Set(tokenSettings)].filter(d => d != undefined);
-								let currentValue = null; // passing null will set the switch as unknown; undefined is the same as false
-								if (uniqueSettings.length === 1) {
-									currentValue = uniqueSettings[0];
-								}
-								$(`#adjustments-flyout button[name='${setting.name}']`).toggleClass('rc-switch-checked', currentValue == '1')
+		if (setting.type === "dropdown") {
+			let inputWrapper = build_dropdown_input(setting, currentValue, function(name, newValue) {
+				tokens.forEach(token => {
+					token.options[name] = newValue;
+					token.place_sync_persist();
+				});
+				if(setting.name =='tokenStyleSelect'){		
+					for(let j=0; j<token_settings.length; j++){
+						let setting = token_settings[j];
+						if(setting.type === "toggle"){
+							let tokenSettings = tokens.map(t => t.options[setting.name]);
+							let uniqueSettings = [...new Set(tokenSettings)].filter(d => d != undefined);
+							let currentValue = null; // passing null will set the switch as unknown; undefined is the same as false
+							if (uniqueSettings.length === 1) {
+								currentValue = uniqueSettings[0];
 							}
-							
+							$(`#adjustments-flyout button[name='${setting.name}']`).toggleClass('rc-switch-checked', currentValue == '1')
 						}
+						
 					}
-				});
-				if(setting.menuPosition != undefined){
-					body.find(`>div:nth-of-type(${setting.menuPosition})`).before(inputWrapper)
 				}
-				else{
-					body.append(inputWrapper);
-				}
-				
-			} else if (setting.type === "toggle") {
-				let inputWrapper = build_toggle_input(setting, currentValue, function (name, newValue) {
-					tokens.forEach(token => {
-						token.options[name] = newValue;
-						token.place_sync_persist(true);
-					});
-				});
-				if(setting.menuPosition != undefined){
-					body.find(`>div:nth-of-type(${setting.menuPosition})`).before(inputWrapper)
-				}
-				else{
-					body.append(inputWrapper);
-				}
-			} else {
-				console.warn("build_options_flyout_menu failed to handle token setting option with type", setting.type);
+			});
+			if(setting.menuPosition != undefined){
+				const position = body.find(`>div:nth-of-type(${setting.menuPosition})`)
+				if (position.length > 0)
+					position.before(inputWrapper)
+				else
+					body.append(inputWrapper)
 			}
+			else{
+				body.append(inputWrapper);
+			}
+			
+		} else if (setting.type === "toggle") {
+			let inputWrapper = build_toggle_input(setting, currentValue, function (name, newValue) {
+				tokens.forEach(token => {
+					token.options[name] = newValue;
+					token.place_sync_persist(true);
+				});
+			});
+			if(setting.menuPosition != undefined){
+				const position = body.find(`>div:nth-of-type(${setting.menuPosition})`)
+				if(position.length>0)
+					position.before(inputWrapper)
+				else
+					body.append(inputWrapper)
+			}
+			else{
+				body.append(inputWrapper);
+			}
+		} else {
+			console.warn("build_options_flyout_menu failed to handle token setting option with type", setting.type);
 		}
-		
+	}
+	if(window.DM){
 		let tokenMaxAges = [];
 		let tokenAges = [];
 		tokens.forEach(t => {
@@ -4469,6 +4481,14 @@ function open_quick_roll_menu(e){
 				$(this).toggleClass('save-success', true)
 			}
 		})
+		const rows = results.find('tr[data-target]');
+		rows.each(function(){
+			const target = $(this).attr('data-target');
+			if (window.all_token_objects[target]?.options.revealname != true){
+				$(this).toggleClass('hideQrmRowFromPlayers')
+			}
+
+		})
 		results.attr('id','qrm-gamelog');
 		let msgdata = {
 			player: window.PLAYER_NAME,
@@ -4614,8 +4634,7 @@ function open_quick_roll_menu(e){
 		scroll: false,
 		containment: "#windowContainment",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -4626,8 +4645,7 @@ function open_quick_roll_menu(e){
 		handles: "all",
 		containment: "#windowContainment",
 		start: function () {
-			$("#resizeDragMon").append($('<div class="iframeResizeCover"></div>'));			
-			$("#sheet").append($('<div class="iframeResizeCover"></div>'));
+			$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
 		},
 		stop: function () {
 			$('.iframeResizeCover').remove();
@@ -4986,7 +5004,10 @@ function qrm_fetch_stat(token) {
 		if(token.options.customStat != undefined){
 			roll_bonus = token.options.customStat[save_dropdown_value]['save']
 		}
-		if(roll_bonus == undefined){
+		if (roll_bonus >= 0) {
+			roll_bonus = "+" + parseInt(roll_bonus);
+		}
+		else if(roll_bonus == undefined){
 			roll_bonus = "+"+0;	
 		}
 	}
