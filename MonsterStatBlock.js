@@ -93,6 +93,17 @@ async function display_stat_block_in_container(statBlock, container, tokenId, cu
           token.track_ability(spellName, numberFound)
         }
         let input = createCountTracker(token, spellName, numberFound, remainingText, "");
+        const playerDisabled = $(this).hasClass('player-disabled');
+        if (!window.DM && playerDisabled) {
+          input.prop('disabled', true);
+        }
+        const partyLootTable = $(this).closest('.party-item-table');
+        if (partyLootTable.hasClass('shop') && numberFound > 0) {
+          $(this).closest('tr').find('td>.item-quantity-take-input').val(1);
+        }
+        else {
+          $(this).closest('tr').find('td>.item-quantity-take-input').val(numberFound);
+        }
         $(this).find('p').remove();
         $(this).after(input)
       })

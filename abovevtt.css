@@ -33,6 +33,9 @@ body > button,
     border: 1px solid lightgray;
     font-size: 12px;
 }
+.note-text table{
+    width: revert-layer;
+}
 .top_menu input,
 .top_menu select{
     box-sizing: border-box;
@@ -194,7 +197,25 @@ body > div {
     padding: 2px 4px;
 }
 
-
+.party-item-table input.injected-input[disabled] {
+    appearance: none !important;
+    background: none !important;
+    border: none !important;
+}
+.party-item-table td.item-add-cell{
+    min-width: 90px;
+}
+.note-text .ct-currency-button__currency-item-preview{
+    width:16px;
+    height:16px;
+    position:relative;
+    display:inline-block;
+}
+.note-text .party-currency {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 [class*='GameLogEntries'] [class*='Message-Collapsed-Other-Flex'] {
     padding: 8px 10px;
     color: rgb(92, 112, 128);
@@ -4557,6 +4578,12 @@ div.ct-sidebar__pane-content > div.selected-tab,
 .ct-sidebar--visible{
    height: calc(-15px + 100vh) !important;
 }
+.ct-sidebar__inner [class*='styles_controls']>span{
+    visibility: hidden; 
+    width: 0px;
+    height: 0px; 
+    position: absolute;
+}
 
 /*this may be a DDB bug - as the `Send to (default)` button scrolls off screen and messess with our layout as at 4/25/2024*/
 .ct-sidebar__pane-content>div:first-of-type,
@@ -4859,7 +4886,7 @@ td button.block-send-to-game-log {
     display: flex;
     float: unset;
     top:50%;
-    right: -2px;
+    right: 2px;
     transform: translate(0px, -50%);
 }
 td button.block-send-to-game-log span{

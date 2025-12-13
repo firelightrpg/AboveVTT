@@ -2322,7 +2322,7 @@ function inject_sidebar_send_to_gamelog_button(sidebarPaneContent) {
         text: html
       };
       window.MB.inject_chat(data);
-      notify_gamelog();
+      notify_gamelog([]);
     }
     else{
       
@@ -2339,6 +2339,200 @@ function inject_sidebar_send_to_gamelog_button(sidebarPaneContent) {
     
     
   });
+}
+
+function find_items_in_cache_by_id_and_name(items = []) {
+  const foundItems = [];
+  for (let item of items) {
+    const cachedItem = window.ITEMS_CACHE.find(ci => ci.id.toString() === item.id.toString() && ci.name.toLowerCase().includes(item.name.toLowerCase()));
+    if (cachedItem) {
+      foundItems.push(cachedItem);
+    }
+  }
+  return foundItems;
+}
+function find_items_in_cache_by_name(names = [], exactMatch = false) {
+  names = names.map(name => name.toLowerCase());
+  
+  if(exactMatch){
+    return window.ITEMS_CACHE.filter(ci => names.includes(ci.name.toString().toLowerCase()));
+  }
+  return window.ITEMS_CACHE.filter(ci => ci.name.toString().toLowerCase().includes(names));
+}
+
+
+class PartyInventoryQueue {
+  constructor() {
+    this.queue = [];
+    this.isProcessing = false;
+    this.batchTimer = null;
+    this.requestTimeout = null;
+  }
+
+  addToQueue(item) {
+    this.queue.push(item);
+    
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+    }
+    
+    if (!this.isProcessing) {
+      this.batchTimer = setTimeout(() => {
+        this.batchTimer = null;
+        this.processQueue();
+      }, 10);
+    }
+  }
+
+  processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+       return;
+    }
+
+    this.isProcessing = true;
+    const item = this.queue.shift();
+
+    this.requestTimeout = setTimeout(() => {
+      this.isProcessing = false;
+      if (this.queue.length > 0) {
+        setTimeout(() => this.processQueue(), 100);
+      }
+    }, 15000);
+
+    try {
+      if (item.type === 'items') {
+        add_items_to_party_inventory(item.data);
+      } else if (item.type === 'currency') {
+        add_currency_to_party_inventory(item.data);
+      } else if (item.type === 'customItem') {
+        add_custom_item_to_party_inventory(item.data);
+      }
+    } catch (error) {
+      this.isProcessing = false;
+      if (this.queue.length > 0) {
+        setTimeout(() => this.processQueue(), 100); 
+      }
+    }
+  }
+
+  onResponseReceived() {    
+    if (this.requestTimeout) {
+      clearTimeout(this.requestTimeout);
+      this.requestTimeout = null;
+    }
+
+    this.isProcessing = false;
+    
+    if (this.queue.length > 0) {
+      setTimeout(() => this.processQueue(), 100);
+    } else {
+      if (window.MB) {
+        window.MB.sendMessage('character-sheet/item-shared/fulfilled', {});
+        if(DDBApi)
+          DDBApi.debounceGetPartyInventory();
+      }
+      else {
+        tabCommunicationChannel.postMessage({
+          msgType: 'DDBMessage',
+          action: 'character-sheet/item-shared/fulfilled',
+          data: {},
+          sendTo: window.sendToTab
+        });
+      }
+    }
+  }
+}
+
+window.partyInventoryQueue = new PartyInventoryQueue();
+
+function add_items_to_party_inventory(items = []) {
+  const itemIds = Object.keys(items);
+  if (itemIds.length === 0) {
+    console.warn('add_items_to_party_inventory called with no items');
+    return;
+  }
+  const characterId = window.DM || is_spectator_page() ? parseInt(window.playerUsers[0]?.id) : parseInt(my_player_id());
+  const data = { characterId, equipment: [] };
+  for (let item of items) {
+    const entityId = parseInt(item.id);
+    const entityTypeId = parseInt(item.entityTypeId);
+    const quantity = parseInt(item.quantity);
+    const containerEntityTypeId = 618115330; // campaign inventory enum. See ContainerTypeEnum[ContainerTypeEnum["CAMPAIGN"] on DDB.
+    const containerEntityId = parseInt(find_game_id());
+    data.equipment.push({
+      entityId,
+      entityTypeId,
+      containerEntityTypeId,
+      containerEntityId,
+      quantity
+    });
+  }
+
+  DDBApi.addItemsToPartyInventory(data).then(response => {
+    console.log('add_items_to_party_inventory response:', response);
+    window.partyInventoryQueue.onResponseReceived();
+  }).catch(error => {
+    console.error('add_items_to_party_inventory error:', error);
+    window.partyInventoryQueue.onResponseReceived();
+  });
+
+}
+function add_custom_item_to_party_inventory(item) {
+
+  if (!item) {
+    console.warn('add_items_to_party_inventory called with no items');
+    return;
+  }
+  const characterId = window.DM || is_spectator_page() ? parseInt(window.playerUsers[0]?.id) : parseInt(my_player_id());
+
+ 
+  const name = item.name ? item.name : 'Custom Item';
+  const weight = item.weight ? parseFloat(item.weight) : null;
+  const cost = item.cost ? parseFloat(item.cost) : null;
+  const notes = item.notes ? item.notes : null;
+  const description = item.description ? item.description : null;
+  const quantity = parseInt(item.quantity);
+  const containerEntityTypeId = 618115330; // campaign inventory enum. See ContainerTypeEnum[ContainerTypeEnum["CAMPAIGN"] on DDB.
+  const containerEntityId = parseInt(find_game_id());
+  const data = {
+    characterId,
+    containerEntityTypeId,
+    containerEntityId,
+    description,
+    notes,
+    cost,
+    weight,
+    name,
+    quantity,
+    partyId: containerEntityId
+  };
+  
+
+  DDBApi.addCustomItemToPartyInventory(data).then(response => {
+    console.log('add_custom_item_to_party_inventory response:', response);
+    window.partyInventoryQueue.onResponseReceived();
+  }).catch(error => {
+    console.error('add_custom_item_to_party_inventory error:', error);
+    window.partyInventoryQueue.onResponseReceived();
+  });
+
+}
+function add_currency_to_party_inventory(currency = {cp:0,sp:0,gp:0,ep:0,pp:0}) {
+  
+  const characterId = window.DM || is_spectator_page() ? parseInt(window.playerUsers[0]?.id) : parseInt(my_player_id());
+  const destinationEntityTypeId = 618115330; // campaign inventory enum. See ContainerTypeEnum[ContainerTypeEnum["CAMPAIGN"] on DDB.
+  const destinationEntityId = parseInt(find_game_id());
+  const data = { characterId, destinationEntityId, destinationEntityTypeId, ...currency };
+
+
+  DDBApi.addCurrenciesToPartyInventory(data).then(response => {
+    console.log('add_currency_to_party_inventory response:', response);
+    window.partyInventoryQueue.onResponseReceived();
+  }).catch(error => {
+    console.error('add_currency_to_party_inventory error:', error);
+    window.partyInventoryQueue.onResponseReceived();
+  });
+
 }
 async function fetch_github_issue_comments(issueNumber) {
   const request = await fetch("https://api.github.com/repos/cyruzzo/AboveVTT/issues?labels=bug", { credentials: "omit" });
