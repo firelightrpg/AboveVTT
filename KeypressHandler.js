@@ -1,272 +1,11 @@
 var altHeld = false;
 var ctrlHeld = false;
 var shiftHeld = false;
-var cursor_x = -1;
-var cursor_y = -1;
 var arrowKeysHeld = [0, 0, 0, 0];
 
 const sb_scroll_style = "avtt-scroll-hidden"
 
-function avttIsFilePickerVisible() {
-    const picker = document.getElementById("avtt-file-picker");
-    if (!picker) {
-        return false;
-    }
-    return $(picker).is(":visible");
-}
 
-function avttShouldBypassFilePickerHotkey(targetElement) {
-    const picker = document.getElementById("avtt-file-picker");
-    if (!picker) {
-        return false;
-    }
-    let element = null;
-    if (targetElement && picker.contains(targetElement)) {
-        element = targetElement;
-    } else if (document.activeElement && picker.contains(document.activeElement)) {
-        element = document.activeElement;
-    }
-    if (!element) {
-        return false;
-    }
-
-    const tagName = String(element.tagName || "").toLowerCase();
-    if (tagName === "input" || tagName === "textarea") {
-        return true;
-    }
-    return Boolean(element.isContentEditable);
-}
-
-function avttHandleFilePickerCut(e) {
-    if (!avttIsFilePickerVisible()) {
-        return false;
-    }
-    if (avttShouldBypassFilePickerHotkey(e?.target)) {
-        return false;
-    }
-    if (typeof window.avttCutSelectedFiles === "function") {
-        const didCut = window.avttCutSelectedFiles();
-        if (didCut) {
-            e?.preventDefault?.();
-            return true;
-        }
-    }
-    return false;
-}
-
-async function avttHandleFilePickerPaste(e) {
-    if (!avttIsFilePickerVisible()) {
-        return false;
-    }
-    if (avttShouldBypassFilePickerHotkey(e?.target)) {
-        return false;
-    }
-    if (typeof window.avttPasteFiles === "function") {
-        try {
-            const didPaste = await window.avttPasteFiles();
-            if (didPaste) {
-                e?.preventDefault?.();
-                return true;
-            }
-        } catch (error) {
-            console.error("Failed to paste files from file picker clipboard", error);
-        }
-    }
-    return false;
-}
-
-function hide_scrollbar() {
-    if (!document.getElementById(sb_scroll_style)) {
-        const style = document.createElement("style");
-        style.id = sb_scroll_style
-        style.textContent = `
-    body::-webkit-scrollbar {
-        width: 0px;
-        height: 0px;
-    }
-    body::-webkit-scrollbar-track {
-        background: transparent !important;
-    }
-    body::-webkit-scrollbar-thumb {
-        background-color: transparent;
-        border-radius: 6px;
-        border: none;
-    }
-    body::-webkit-scrollbar-corner {
-        background: transparent;
-    }
-    .sidebar__pane-content {
-        box-shadow: none;
-    }
-    html {
-        scrollbar-width: none;
-    }
-        `;
-        document.head.appendChild(style);
-    }
-}
-function allow_scrollbar() {
-    e = document.getElementById(sb_scroll_style);
-    if(e) e.remove();
-}
-function hide_or_unhide_scrollbar() {
-    if (get_avtt_setting_value("alwaysHideScrollbar")) {
-        hide_scrollbar();
-    } else {
-        allow_scrollbar();        
-    }
-}
-function unhide_interface() {
-    if ($('#hide_interface_button').hasClass('unhidden')) {
-        $('#hide_interface_button').hide().removeClass('unhidden');
-        $('.hideable').show();
-        $(".dice-toolbar").css({'visibility': '', 'pointer-events': ''});
-        hide_or_unhide_scrollbar() 
-    } else {
-        if ($('#hide_rightpanel').hasClass('point-right')) {
-            $('#hide_rightpanel').click();
-        }
-        if (is_characters_page()) {
-            hide_player_sheet();
-        }
-        $(".dice-toolbar").css({'visibility': 'hidden', 'pointer-events': 'none'});
-        $('#hide_interface_button').show().addClass('unhidden');
-        $('.hideable').hide();
-        hide_scrollbar();
-    }
-}
-
-/*
-Adds num key dice rolls together or rolls them if auto roll is set
-Will remove if ctrl/mod is held.
-Simple 1d# rolls are grouped together.
-
-Other rolls are added/subtracted individually such as 2d20kh1. As 4d20kh2 would not always produce the same result. 
-
-To do: Support grouping semi-simple rolls together such as 2d4+4 -> 4d4+8 instead of 2d4+4+2d4+4. 
-Adjusting this from regex adjusting a string to roll groupings in json or an array then building the formula would probably make this easier. 
-*/
-function hotkeyDice(nthDice){
-
-
-    const rollSetting = get_avtt_setting_value('quickRoll')["customDieRoll"+nthDice];
-    const autoRoll = get_avtt_setting_value('quickRoll')['autoRoll'];
-    
-    if(autoRoll == true){
-        const rollData = DiceRoll.fromSlashCommand(`/r ${rollSetting}`);
-        window.diceRoller.roll(rollData); 
-    }
-    else{
-        simpleDice = ['1d4', '1d6', '1d8', '1d100', '1d10', '1d12', '1d20'];
-
-        if(shiftHeld){
-            if(window.numpadRollFormula === undefined){
-                window.numpadRollFormula = ``;
-            }
-            window.numpadRollFormula = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0]
-        
-            if(simpleDice.includes(rollSetting)){
-                const rollRegex = new RegExp(`([+-][\\d]+)?(${rollSetting.replace('1d', 'd')}($|[+-]))`, "gi");
-                if(window.numpadRollFormula.match(rollRegex) != null){
-                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function(m, m1, m2, m3){
-                        const newAmount = parseInt(m1) - 1;
-                        if(newAmount != 0){
-                           return `${newAmount > 0 ? `+${newAmount}` : `${newAmount}`}${m2}`;
-                        }
-                        else{
-                           return m3;
-                        }
-                    })
-                }
-                else{
-                    window.numpadRollFormula = `${window.numpadRollFormula}-${rollSetting}`
-                }
-            }
-            else{
-                const rollRegex = new RegExp(`(\\+${rollSetting.replace(/\+/gi, '\\+')})($|[+-])`, "i");
-                
-                if(window.numpadRollFormula.match(rollRegex) != null){
-                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function(m, m1, m2){
-                        return m2;
-                    })
-                }
-                else{
-                    window.numpadRollFormula = `${window.numpadRollFormula}-${rollSetting}` 
-                }
-            }
-        }
-        else{
-            if(window.numpadRollFormula === undefined){
-                window.numpadRollFormula = ``;
-            } 
-            window.numpadRollFormula = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0]
-        
-            if(simpleDice.includes(rollSetting)){
-                const rollRegex = new RegExp(`([+-][\\d]+)?(${rollSetting.replace('1d', 'd')}($|[+-]))`, "gi");
-                if(window.numpadRollFormula.match(rollRegex) != null){
-                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function(m, m1, m2, m3){
-                        const newAmount = parseInt(m1) + 1;
-                        if(newAmount != 0){
-                           return `${newAmount > 0 ? `+${newAmount}` : `${newAmount}`}${m2}`;
-                        }
-                        else{
-                           return m3;
-                        }
-                    })
-                }
-                else{
-                    window.numpadRollFormula = `${window.numpadRollFormula}+${rollSetting}`
-
-                }
-            }
-            else{
-                const rollRegex = new RegExp(`(\\-${rollSetting.replace(/\+/gi, '\\+')})($|[+-])`, "i");
-                
-                if(window.numpadRollFormula.match(rollRegex) != null){
-                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function(m, m1, m2){
-                        return m2;
-                    });
-                }
-                else{
-                    window.numpadRollFormula = `${window.numpadRollFormula}+${rollSetting}` 
-                }
-            }
-        }
-
-        updateDisplayedDiceFormula();
-    }
-
-   
-}
-
-function updateDisplayedDiceFormula(){
-   
-    let wrapper = $('#displayedDiceFormula')
-    if($('#displayedDiceFormula').length == 0){
-        wrapper = $(`<div id='displayedDiceFormula'>Number key Formula to Roll:<span class='rollFormula'></span></div>`)
-        const exitButton = $(`<button id='displayedDiceFormulaExit'>X</button>`);
-        exitButton.off('click.exitNumDice').on('click.exitNumDice', function(){
-            wrapper.remove();
-            delete window.numpadRollFormulaMod;
-            delete window.numpadRollFormula
-        })
-        wrapper.append(exitButton);
-        $('#VTTWRAPPER').append(wrapper);
-    }
-     if(window.numpadRollFormulaMod == undefined)
-        window.numpadRollFormulaMod = 0;
-    let displayMod = window.numpadRollFormulaMod
-    if(displayMod == 0)
-        displayMod = '';
-    const action = window.numpadRollFormula.replace(diceRollCommandRegex, "").replace(allowedExpressionCharactersRegex, "");
-    const expression = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0].replace(/\s*([+-])\s*|\s+$/gi, '$1');
-   
-    const displayText = `${expression}${window.numpadRollFormulaMod > 0 ? `+${window.numpadRollFormulaMod}` : window.numpadRollFormulaMod  == 0 ? '' : `${window.numpadRollFormulaMod}`} ${action}`
-    if(displayText == '')
-        $('#displayedDiceFormulaExit').click();
-    else
-        wrapper.find('.rollFormula').text(`${displayText.replace(/^\+/, '')}`)
-}
 
 function init_keypress_handler(){
 
@@ -277,9 +16,7 @@ Mousetrap.bind('c', function () {       //combat tracker
 
 
 Mousetrap.bind('d', function () {       //draw menu
-    if (window.DM){
-        $('#draw_button').click()
-    }
+    $('#draw_button').click()
 });
 
 Mousetrap.bind('t', function () {       //draw menu
@@ -327,6 +64,32 @@ Mousetrap.bind('v', function () {       //video toggle
 
     $('#peerVideo_switch').click()
 });
+
+function fKeySaveLocation(e){
+    e.preventDefault();
+    window.savedLocations = {
+        ...window.savedLocations,
+        [e.key]: {
+            zoom: window.ZOOM,
+            scrollX: window.scrollX,
+            scrollY: window.scrollY
+        }
+    }
+    showTempMessage(`Location ${e.key} saved`, { fadeDelay:600, fadeTime:400 });
+}
+function fKeyGoToLocation(e){
+    e.preventDefault();
+    const locData = window.savedLocations?.[e.key];
+    if(!locData) return;
+    change_zoom(locData.zoom);
+    window.scrollTo({left: locData.scrollX, top: locData.scrollY, behavior: 'smooth'});
+}
+Mousetrap.bind(['shift+f1', 'shift+f2', 'shift+f3', 'shift+f4'], function (e) {    
+    fKeySaveLocation(e);
+})
+Mousetrap.bind(['f1', 'f2', 'f3', 'f4'], function (e) {    
+    fKeyGoToLocation(e);
+})
 
 Mousetrap.bind('shift+v', function () {    
     if(window.SelectedTokenVision == true && $('#selected_token_vision .ddbc-tab-options__header-heading--is-active').length==0){
@@ -382,7 +145,27 @@ function handle_menu_number_press(e) {
 Mousetrap.bind(["1","2","3","4","5","6","7","8","9"], function (e) {
     handle_menu_number_press(e)
 });*/
-
+Mousetrap.bind('b', function () {       //zoom plus
+    if(shiftHeld)
+        return;
+    open_selected_token_stat();
+});
+Mousetrap.bind('shift+b', function () {       //zoom plus
+    popout_all_selected_token_stat();
+});
+Mousetrap.bind('h', function () {       //zoom plus
+    const selectedTokens = window.CURRENTLY_SELECTED_TOKENS;
+    const className = determine_hidden_classname(selectedTokens);
+    const hideAll = className.includes('some-active');
+    for(let id of selectedTokens){
+        const token = window.TOKEN_OBJECTS[id];
+        if (hideAll || token.options.hidden !== true) {
+            token.hide();
+        } else {
+            token.show();
+        }
+    }
+}); 
 Mousetrap.bind('+', function () {       //zoom plus
     if($('.roll-mod-container').hasClass('show')){
         $('.roll-button-mod.plus').click();
@@ -481,6 +264,10 @@ Mousetrap.bind('shift+s', function (e) {
     }
 });
            
+Mousetrap.bind('shift+g', function () { //toggle high visibility grid
+    const vtt = $("#VTT");
+    grid_overlay_update(window.CURRENT_SCENE_DATA.grid == 1, vtt.css('--grid-overlay-on') !== 'block')
+});
 
 Mousetrap.bind('q', function () {       //collapse/show sidebar. (q is next to tab, also used to show/hide elements)
     $('#hide_rightpanel').click()
@@ -496,8 +283,14 @@ Mousetrap.bind('shift+w', function () {
         $('#show_walls').toggleClass(['button-enabled', 'ddbc-tab-options__header-heading--is-active']);
         redraw_light_walls();
     }
-       
+
 });
+Mousetrap.bind('j', function () {
+    if(window.DM){
+        $('#snap_walls').toggleClass(['button-enabled', 'ddbc-tab-options__header-heading--is-active']);
+    }
+});
+    
 Mousetrap.bind('shift+e', function () {
     if(window.DM){
         $('#show_elev').toggleClass(['button-enabled', 'ddbc-tab-options__header-heading--is-active']);
@@ -521,21 +314,25 @@ Mousetrap.bind('shift+l', function () {
         $('#select_locked').click();
     }
 });
-
-Mousetrap.bind('esc', function () {     //deselect all buttons
-
+if(is_spectator_page()){
+    Mousetrap.bind('shift+k', function () {
+        sendPointerEvent('#lock_view_button')
+    });
+}
+Mousetrap.bind('esc', function (e) {     //deselect all buttons
+    clear_temp_canvas();
+    close_splash();
     $('#displayedDiceFormula').remove();
     delete window.numpadRollFormulaMod;
     delete window.numpadRollFormula;
+    dialogCloser(e, true);
 
-    stop_drawing();
-
-    if(!$("#wall_button").hasClass("button-enabled")){
-        $('#select-button').click();
-    }
-    else{
-        redraw_light_walls();
-    }
+    //reselect the current menu to trigger draw stop/reset, allows cancelling polygons or other drawings
+    //ensure menu stays open if it was open, as clicking the button again would close it
+    const enabledMenuHeader = $('.main-top-buttons>.drawbutton.button-enabled');
+    const visibleMenu = $('.top_menu.visible');
+    enabledMenuHeader.click();
+    visibleMenu.toggleClass('visible', true); 
 
     close_token_context_menu();
     $(".draggable-token-creation").addClass("drag-cancelled");
@@ -554,51 +351,42 @@ Mousetrap.bind('esc', function () {     //deselect all buttons
         // only close the sidebar if there isn't something on the screen explicitly trying to keep it open
         close_sidebar_modal();
     }
+    deselect_all_tokens();
     remove_tooltip();
     removeError();
 });
 
-
-const moveLoop = function(callback = function(){}){
-    for (let i = 0; i < window.CURRENTLY_SELECTED_TOKENS.length; i++) {
-        let id = window.CURRENTLY_SELECTED_TOKENS[i];
-        let token = window.TOKEN_OBJECTS[id];
-        callback(token);
-    }
-    return true;
-}
-
 //Throttle so the token doesn't immediately fly off map if button is held and set trailing only we can register diagonal movement as 1 move.
 const throttleMoveRequest = throttle(() => {
-    requestAnimationFrame(moveKeyWatch);
-}, 5, {leading: false, trailing: true})
+    moveKeyWatch();
+}, 25, {leading: false, trailing: true})
 
 
 //setTimeout so we can be sure diagonal key combos are pressed or not.
 function moveKeyWatch() {
     if (arrowKeysHeld[0] && arrowKeysHeld[2]) {
-        moveLoop(function(token){token.moveUpLeft()});
+        forSelTokens(function(token){token.moveUpLeft()});
     } 
     else if (arrowKeysHeld[0] && arrowKeysHeld[3]) {
-       moveLoop(function(token){token.moveUpRight()});
+       forSelTokens(function(token){token.moveUpRight()});
     } 
     else if (arrowKeysHeld[1] && arrowKeysHeld[2]) {
-       moveLoop(function(token){token.moveDownLeft()});
+       forSelTokens(function(token){token.moveDownLeft()});
     } 
     else if (arrowKeysHeld[1] && arrowKeysHeld[3]) {
-       moveLoop(function(token){token.moveDownRight()});
+       forSelTokens(function(token){token.moveDownRight()});
     } 
     else if (arrowKeysHeld[0]) {
-       moveLoop(function(token){token.moveUp()});
+       forSelTokens(function(token){token.moveUp()});
     } 
     else if (arrowKeysHeld[1]) {
-       moveLoop(function(token){token.moveDown()});
+       forSelTokens(function(token){token.moveDown()});
     }
     else if (arrowKeysHeld[2]) {
-      moveLoop(function(token){token.moveLeft()});
+      forSelTokens(function(token){token.moveLeft()});
     }
     else if (arrowKeysHeld[3]) {
-       moveLoop(function(token){token.moveRight()});
+       forSelTokens(function(token){token.moveRight()});
     }  
 }
 
@@ -807,14 +595,12 @@ Mousetrap.bind('mod+a', function (e) {
         redraw_light(true);
         sync_drawings();
         window.wallsBeingDragged = [];
+    } else if($('#select-button').hasClass('button-enabled')){ //select all tokens
+        e.preventDefault();
+        select_all_tokens();
     }
 });
 
-document.onmousemove = function(event)
-{
- window.cursor_x = event.pageX;
- window.cursor_y = event.pageY;
-}
 
 Mousetrap.bind(['backspace', 'del'], function(e) {
     delete_selected_tokens();
@@ -860,7 +646,48 @@ function handle_undo(){
     }
 
 }
+    
+Mousetrap.bind('|', () => { //flip all selected tokens
+    forSelTokens((token) => {
+	token.flip()
+	token.place_sync_persist();
+    });
+});
+Mousetrap.bind('/', () => { 
+    forSelTokens((token) => token.moveToBottom());
+});
+    Mousetrap.bind('\'', () => {
+    forSelTokens((token) => token.moveToTop());        
+});
+let key_rotation_done;
+let key_rotation_angle = 0;
+function key_rotation(angle) {
+    if (window.key_rotation_pause)
+        return; //commit in progress, if we allow rotation during process it may remove the token from the map and cause errors
+    if(key_rotation_done) {
+        clearTimeout(key_rotation_done);
+    } else {
+        key_rotation_angle = 0;
+        grouprotate_create();
+    }
+    key_rotation_done = setTimeout(() => {
+        window.key_rotation_pause = true;
+        key_rotation_done = null;
+        grouprotate_commit(key_rotation_angle);
+        draw_selected_token_bounding_box();	        
+    }, 1000);
+    key_rotation_angle += (360 + angle) % 360;
+    grouprotate_rotate(key_rotation_angle);
+}
 
+function rotate_by_gridtype() {
+    return window.CURRENT_SCENE_DATA.gridType == '1' ? 45 : 30;
+}
+Mousetrap.bind('[', () => key_rotation(-rotate_by_gridtype()));
+Mousetrap.bind(']', () => key_rotation(rotate_by_gridtype()));
+Mousetrap.bind('shift+[', () => key_rotation(-10));
+Mousetrap.bind('shift+]', () => key_rotation(10));
+    
 var rotationKeyPresses = [];
 window.addEventListener("keydown", async (event) => {
     const arrowKeys = [ 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown' ];
@@ -897,4 +724,262 @@ window.addEventListener("keyup", async (event) => {
     rotationKeyPresses = [];
 });
 
+}
+/*
+Adds num key dice rolls together or rolls them if auto roll is set
+Will remove if ctrl/mod is held.
+Simple 1d# rolls are grouped together.
+
+Other rolls are added/subtracted individually such as 2d20kh1. As 4d20kh2 would not always produce the same result. 
+
+To do: Support grouping semi-simple rolls together such as 2d4+4 -> 4d4+8 instead of 2d4+4+2d4+4. 
+Adjusting this from regex adjusting a string to roll groupings in json or an array then building the formula would probably make this easier. 
+*/
+function hotkeyDice(nthDice) {
+
+
+    const rollSetting = get_avtt_setting_value('quickRoll')["customDieRoll" + nthDice];
+    const autoRoll = get_avtt_setting_value('quickRoll')['autoRoll'];
+
+    if (autoRoll == true) {
+        const rollData = DiceRoll.fromSlashCommand(`/r ${rollSetting}`);
+        window.diceRoller.roll(rollData);
+    }
+    else {
+        simpleDice = ['1d4', '1d6', '1d8', '1d100', '1d10', '1d12', '1d20'];
+
+        if (shiftHeld) {
+            if (window.numpadRollFormula === undefined) {
+                window.numpadRollFormula = ``;
+            }
+            window.numpadRollFormula = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0]
+
+            if (simpleDice.includes(rollSetting)) {
+                const rollRegex = new RegExp(`([+-][\\d]+)?(${rollSetting.replace('1d', 'd')}($|[+-]))`, "gi");
+                if (window.numpadRollFormula.match(rollRegex) != null) {
+                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function (m, m1, m2, m3) {
+                        const newAmount = parseInt(m1) - 1;
+                        if (newAmount != 0) {
+                            return `${newAmount > 0 ? `+${newAmount}` : `${newAmount}`}${m2}`;
+                        }
+                        else {
+                            return m3;
+                        }
+                    })
+                }
+                else {
+                    window.numpadRollFormula = `${window.numpadRollFormula}-${rollSetting}`
+                }
+            }
+            else {
+                const rollRegex = new RegExp(`(\\+${rollSetting.replace(/\+/gi, '\\+')})($|[+-])`, "i");
+
+                if (window.numpadRollFormula.match(rollRegex) != null) {
+                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function (m, m1, m2) {
+                        return m2;
+                    })
+                }
+                else {
+                    window.numpadRollFormula = `${window.numpadRollFormula}-${rollSetting}`
+                }
+            }
+        }
+        else {
+            if (window.numpadRollFormula === undefined) {
+                window.numpadRollFormula = ``;
+            }
+            window.numpadRollFormula = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0]
+
+            if (simpleDice.includes(rollSetting)) {
+                const rollRegex = new RegExp(`([+-][\\d]+)?(${rollSetting.replace('1d', 'd')}($|[+-]))`, "gi");
+                if (window.numpadRollFormula.match(rollRegex) != null) {
+                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function (m, m1, m2, m3) {
+                        const newAmount = parseInt(m1) + 1;
+                        if (newAmount != 0) {
+                            return `${newAmount > 0 ? `+${newAmount}` : `${newAmount}`}${m2}`;
+                        }
+                        else {
+                            return m3;
+                        }
+                    })
+                }
+                else {
+                    window.numpadRollFormula = `${window.numpadRollFormula}+${rollSetting}`
+
+                }
+            }
+            else {
+                const rollRegex = new RegExp(`(\\-${rollSetting.replace(/\+/gi, '\\+')})($|[+-])`, "i");
+
+                if (window.numpadRollFormula.match(rollRegex) != null) {
+                    window.numpadRollFormula = window.numpadRollFormula.replace(rollRegex, function (m, m1, m2) {
+                        return m2;
+                    });
+                }
+                else {
+                    window.numpadRollFormula = `${window.numpadRollFormula}+${rollSetting}`
+                }
+            }
+        }
+
+        updateDisplayedDiceFormula();
+    }
+
+
+}
+
+function updateDisplayedDiceFormula() {
+
+    let wrapper = $('#displayedDiceFormula')
+    if ($('#displayedDiceFormula').length == 0) {
+        wrapper = $(`<div id='displayedDiceFormula'>Number key Formula to Roll:<span class='rollFormula'></span></div>`)
+        const exitButton = $(`<button id='displayedDiceFormulaExit'>X</button>`);
+        exitButton.off('click.exitNumDice').on('click.exitNumDice', function () {
+            wrapper.remove();
+            delete window.numpadRollFormulaMod;
+            delete window.numpadRollFormula
+        })
+        wrapper.append(exitButton);
+        $('#VTTWRAPPER').append(wrapper);
+    }
+    if (window.numpadRollFormulaMod == undefined)
+        window.numpadRollFormulaMod = 0;
+    let displayMod = window.numpadRollFormulaMod
+    if (displayMod == 0)
+        displayMod = '';
+    const action = window.numpadRollFormula.replace(diceRollCommandRegex, "").replace(allowedExpressionCharactersRegex, "");
+    const expression = window.numpadRollFormula.replace(diceRollCommandRegex, "").match(allowedExpressionCharactersRegex)?.[0].replace(/\s*([+-])\s*|\s+$/gi, '$1');
+
+    const displayText = `${expression}${window.numpadRollFormulaMod > 0 ? `+${window.numpadRollFormulaMod}` : window.numpadRollFormulaMod == 0 ? '' : `${window.numpadRollFormulaMod}`} ${action}`
+    if (displayText == '')
+        $('#displayedDiceFormulaExit').click();
+    else
+        wrapper.find('.rollFormula').text(`${displayText.replace(/^\+/, '')}`)
+}
+function hide_scrollbar() {
+    if (!document.getElementById(sb_scroll_style)) {
+        const style = document.createElement("style");
+        style.id = sb_scroll_style
+        style.textContent = `
+    body::-webkit-scrollbar {
+        width: 0px;
+        height: 0px;
+    }
+    body::-webkit-scrollbar-track {
+        background: transparent !important;
+    }
+    body::-webkit-scrollbar-thumb {
+        background-color: transparent;
+        border-radius: 6px;
+        border: none;
+    }
+    body::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+    .sidebar__pane-content {
+        box-shadow: none;
+    }
+    html {
+        scrollbar-width: none;
+    }
+        `;
+        document.head.appendChild(style);
+    }
+}
+function allow_scrollbar() {
+    e = document.getElementById(sb_scroll_style);
+    if (e) e.remove();
+}
+function hide_or_unhide_scrollbar() {
+    if (get_avtt_setting_value("alwaysHideScrollbar")) {
+        hide_scrollbar();
+    } else {
+        allow_scrollbar();
+    }
+}
+function unhide_interface() {
+    if ($('#hide_interface_button').hasClass('unhidden')) {
+        $('#hide_interface_button').hide().removeClass('unhidden');
+        $('.hideable').show();
+        $(".dice-toolbar").css({ 'visibility': '', 'pointer-events': '' });
+        hide_or_unhide_scrollbar()
+    } else {
+        if ($('#hide_rightpanel').hasClass('point-right')) {
+            $('#hide_rightpanel').click();
+        }
+        if (is_characters_page()) {
+            hide_player_sheet();
+        }
+        $(".dice-toolbar").css({ 'visibility': 'hidden', 'pointer-events': 'none' });
+        $('#hide_interface_button').show().addClass('unhidden');
+        $('.hideable').hide();
+        hide_scrollbar();
+    }
+}
+function avttIsFilePickerVisible() {
+    const picker = document.getElementById("avtt-file-picker");
+    if (!picker) {
+        return false;
+    }
+    return $(picker).is(":visible");
+}
+
+function avttShouldBypassFilePickerHotkey(targetElement) {
+    const picker = document.getElementById("avtt-file-picker");
+    if (!picker) {
+        return false;
+    }
+    let element = null;
+    if (targetElement && picker.contains(targetElement)) {
+        element = targetElement;
+    } else if (document.activeElement && picker.contains(document.activeElement)) {
+        element = document.activeElement;
+    }
+    if (!element) {
+        return false;
+    }
+
+    const tagName = String(element.tagName || "").toLowerCase();
+    if (tagName === "input" || tagName === "textarea") {
+        return true;
+    }
+    return Boolean(element.isContentEditable);
+}
+
+function avttHandleFilePickerCut(e) {
+    if (!avttIsFilePickerVisible()) {
+        return false;
+    }
+    if (avttShouldBypassFilePickerHotkey(e?.target)) {
+        return false;
+    }
+    if (typeof window.avttCutSelectedFiles === "function") {
+        const didCut = window.avttCutSelectedFiles();
+        if (didCut) {
+            e?.preventDefault?.();
+            return true;
+        }
+    }
+    return false;
+}
+
+async function avttHandleFilePickerPaste(e) {
+    if (!avttIsFilePickerVisible()) {
+        return false;
+    }
+    if (avttShouldBypassFilePickerHotkey(e?.target)) {
+        return false;
+    }
+    if (typeof window.avttPasteFiles === "function") {
+        try {
+            const didPaste = await window.avttPasteFiles();
+            if (didPaste) {
+                e?.preventDefault?.();
+                return true;
+            }
+        } catch (error) {
+            console.error("Failed to paste files from file picker clipboard", error);
+        }
+    }
+    return false;
 }

@@ -105,7 +105,7 @@ function add_ability_tracker_inputs_on_each(target, tokenId){
 		target.find('strong').each(function(){
 			let currentElement = $(this).nextUntil('strong').addBack();
 			if (currentElement.find(".injected-input").length == 0) {
-				const matchForEachSlot = currentElement.text().match(/([0-9])\/Day each:|([0-9])\/Day:/gi)
+				const matchForEachSlot = currentElement.text().match(/([0-9]+)\/Day each:|([0-9]+)\/Day:/gi)
 
 				if (matchForEachSlot){
 					let numberFound = parseInt(matchForEachSlot[0]);
@@ -141,7 +141,7 @@ function add_ability_tracker_inputs_on_each(target, tokenId){
 		target.find(".mon-stat-block__description-block-content > p").each(function() {
 			let currentElement = $(this).clone();
 			if (currentElement.find(".injected-input").length == 0) {
-				const matchForEachSlot = currentElement.text().match(/([0-9])\/Day each:/i)
+				const matchForEachSlot = currentElement.text().match(/([0-9]+)\/Day each:/i)
 				if (matchForEachSlot){
 					let numberFound = parseInt(matchForEachSlot[1]);
 					$(this).children().each(function (indexInArray, valueOfElement) { 
@@ -251,9 +251,9 @@ function add_ability_tracker_inputs(target, tokenId) {
 			return;
 
 		if ($(this).find(".injected-input").length === 0) {
-			processInput(element, /\(([0-9]) slots?\)/, "slots remaining")
-			processInput(element, /\(([0-9])\/Day\)/i, "remaining")
-			processInput(element, /can take ([0-9]) legendary actions/i, "Legendary Actions remaining", false)
+			processInput(element, /\(?([0-9]+) slots?\)?/, "slots remaining")
+			processInput(element, /\(?([0-9]+)\/Day\)?/i, "remaining")
+			processInput(element, /can take ([0-9]+) legendary actions/i, "Legendary Actions remaining", false)
 		}
 		element = null
 	});	
@@ -340,10 +340,6 @@ function scan_player_creature_pane(target) {
  	} catch { }
 	const displayName = `${window.PLAYER_NAME} (${creatureName} ${creatureType})`;
 	
-	const clickHandler = function(clickEvent) {
-		roll_button_clicked(clickEvent, displayName, creatureAvatar, "monster", 'playerExtra');
-	};
-
 	const rightClickHandler = function(contextmenuEvent) {
 		roll_button_contextmenu_handler(contextmenuEvent, displayName, creatureAvatar, "monster", 'playerExtra');
 	}
@@ -377,10 +373,6 @@ function scan_player_creature_pane(target) {
 
 
 	add_journal_roll_buttons(target, 'playerExtra', creatureAvatar, displayName);
-
-
-
-	container.find(".avtt-roll-button").off('click.roller').on('click.roller', clickHandler);
 	container.find(".avtt-roll-button").on("contextmenu", rightClickHandler);
 
 	container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em").off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
