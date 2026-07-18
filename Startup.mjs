@@ -133,9 +133,9 @@ $(function() {
 
         window.STREAMPEERS = {};
         window.MYSTREAMID = uuid();
-        window.JOINTHEDICESTREAM = window.EXPERIMENTAL_SETTINGS['streamDiceRolls'];
+        window.JOINTHEDICESTREAM = window.EXPERIMENTAL_SETTINGS['streamDiceRolls'] == true;
         enable_dice_streaming_feature(window.JOINTHEDICESTREAM);
-       
+
         tabCommunicationChannel.addEventListener ('message', (event) => {
           if((event.data.msgType == 'addCondition' || event.data.msgType == 'removeCondition') && event.data.sendTo == window.PLAYER_ID){ // Sets a player token's condition on and off
             const tokenId = Object.keys(window.all_token_objects).find(key => key.includes(event.data.characterId));
@@ -317,6 +317,72 @@ $(function() {
         if (is_encounters_page()) {
           window.dispatchEvent(new Event('resize'));
         }
+      }).then(async ()=>{
+        if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+          if (localStorage.getItem("BraveShieldsWarningDismissed") === "true") {
+            return;
+          }
+          function isBraveFingerprintEnabled() {
+            try {
+              const canvas = document.createElement('canvas');
+              const size = 16;
+              canvas.width = size;
+              canvas.height = size;
+
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return false;
+
+              ctx.fillStyle = '#000000';
+              ctx.fillRect(0, 0, size, size);
+
+              const imageData = ctx.getImageData(0, 0, size, size);
+              const data = imageData.data;
+
+              for (let i = 0; i < data.length; i += 4) {
+                if (data[i] !== 0 || data[i + 1] !== 0 || data[i + 2] !== 0) {
+                  return true;
+                }
+                if (data[i + 3] !== 255) {
+                  return true;
+                }
+              }
+
+              return false;
+            } catch (e) {
+              console.warn('Canvas fingerprint check failed', e);
+              return false;
+            }
+          }
+          function showBraveShieldsWarning() {
+            $("#above-vtt-error-message").remove();
+            const container = $(`
+              <div id="above-vtt-error-message">
+                <h2>Brave Shields is enabled</h2>
+                <div id="error-message-details">
+                  <p>Brave Shields blocks fingerprinting by adjusting canvas colors, which interferes with vision and elevation in AboveVTT.</p>
+                  <p>For full functionality, at minimum, block fingerprinting for canvas must be disabled in Brave Shields advanced settings. </p>
+                </div>
+                <label style="display:flex;align-items:center;margin-top:0.75rem;cursor:pointer;">
+                  <input id="brave-shields-warning-hide" type="checkbox" style="margin-right:0.5rem;">
+                  Do not show again
+                </label>
+                <div class="error-message-buttons">
+                  <button id="close-error-button">Close</button>
+                </div>
+              </div>
+            `);
+            $(document.body).append(container);
+            $("#close-error-button").on("click", () => {
+              if ($("#brave-shields-warning-hide").is(":checked")) {
+                localStorage.setItem("BraveShieldsWarningDismissed", "true");
+              }
+              removeError();
+            });
+          }
+          if(isBraveFingerprintEnabled()){
+            showBraveShieldsWarning();
+          }
+        }
       })
       .catch((error) => {
         showError(error, `Failed to start AboveVTT on ${window.location.href}`);
@@ -327,13 +393,13 @@ $(function() {
 
 
 const throttleProjectionScroll = throttle(async (f) => {
-    if(window.Projecting == undefined){
-      await f();
-      setTimeout(function(){
-        delete window.Projecting;
-      }, 1000/60)     
-    }
-}, 1000/60)
+    if(window.Projecting != undefined)
+      return;
+    await f();
+    setTimeout(function(){
+      delete window.Projecting;
+    }, 1000/60)     
+}, 1000/240)
 
 
 function addBeyond20EventListener(name, callback) {
@@ -353,7 +419,7 @@ function sendBeyond20Event(name, ...args) {
 function addExtensionPathStyles(){ // some above server images moved out of extension package
   let styles = `<style id='aboveExtensionPathStyles'>
     body{
-      --onedrive-svg: url('${window.EXTENSION_PATH}images/Onedrive_icon.svg');
+      --onedrive-svg: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgNS41IDMyIDIwLjUiPjx0aXRsZT5PZmZpY2VDb3JlMTBfMzJ4XzI0eF8yMHhfMTZ4XzAxLTIyLTIwMTk8L3RpdGxlPjxnIGlkPSJTVFlMRV9DT0xPUiI+PHBhdGggZD0iTTEyLjIwMjQ1LDExLjE5MjkybC4wMDAzMS0uMDAxMSw2LjcxNzY1LDQuMDIzNzksNC4wMDI5My0xLjY4NDUxLjAwMDE4LjAwMDY4QTYuNDc2OCw2LjQ3NjgsMCwwLDEsMjUuNSwxM2MuMTQ3NjQsMCwuMjkzNTguMDA2Ny40Mzg3OC4wMTYzOWExMC4wMDA3NSwxMC4wMDA3NSwwLDAsMC0xOC4wNDEtMy4wMTM4MUM3LjkzMiwxMC4wMDIxNSw3Ljk2NTcsMTAsOCwxMEE3Ljk2MDczLDcuOTYwNzMsMCwwLDEsMTIuMjAyNDUsMTEuMTkyOTJaIiBmaWxsPSIjMDM2NGI4Ii8+PHBhdGggZD0iTTEyLjIwMjc2LDExLjE5MTgybC0uMDAwMzEuMDAxMUE3Ljk2MDczLDcuOTYwNzMsMCwwLDAsOCwxMGMtLjAzNDMsMC0uMDY4MDUuMDAyMTUtLjEwMjIzLjAwMjU4QTcuOTk2NzYsNy45OTY3NiwwLDAsMCwxLjQzNzMyLDIyLjU3Mjc3bDUuOTI0LTIuNDkyOTIsMi42MzM0Mi0xLjEwODE5LDUuODYzNTMtMi40Njc0NiwzLjA2MjEzLTEuMjg4NTlaIiBmaWxsPSIjMDA3OGQ0Ii8+PHBhdGggZD0iTTI1LjkzODc4LDEzLjAxNjM5QzI1Ljc5MzU4LDEzLjAwNjcsMjUuNjQ3NjQsMTMsMjUuNSwxM2E2LjQ3NjgsNi40NzY4LDAsMCwwLTIuNTc2NDguNTMxNzhsLS4wMDAxOC0uMDAwNjgtNC4wMDI5MywxLjY4NDUxLDEuMTYwNzcuNjk1MjhMMjMuODg2MTEsMTguMTlsMS42NjAwOS45OTQzOCw1LjY3NjMzLDMuNDAwMDdhNi41MDAyLDYuNTAwMiwwLDAsMC01LjI4Mzc1LTkuNTY4MDVaIiBmaWxsPSIjMTQ5MGRmIi8+PHBhdGggZD0iTTI1LjU0NjIsMTkuMTg0MzcsMjMuODg2MTEsMTguMTlsLTMuODA0OTMtMi4yNzkxLTEuMTYwNzctLjY5NTI4TDE1Ljg1ODI4LDE2LjUwNDIsOS45OTQ3NSwxOC45NzE2Niw3LjM2MTMzLDIwLjA3OTg1bC01LjkyNCwyLjQ5MjkyQTcuOTg4ODksNy45ODg4OSwwLDAsMCw4LDI2SDI1LjVhNi40OTgzNyw2LjQ5ODM3LDAsMCwwLDUuNzIyNTMtMy40MTU1NloiIGZpbGw9IiMyOGE4ZWEiLz48L2c+PC9zdmc+');
       --onedrive-mask: url('${window.EXTENSION_PATH}images/Onedrive_icon.png');
       --avtt-mask: url('${window.EXTENSION_PATH}assets/avtt-logo.png');
     }
@@ -1133,7 +1199,7 @@ async function lock_character_gamelog_open() {
   }
 
   // Open the gamelog, and lock it open
-  let gameLogButton = $("div.ct-character-header__group--game-log.ct-character-header__group--game-log-last, [data-original-title='Game Log'] button, button[class*='-gamelog-button'], div[class*='campaignButtonGroup'][class*='GameLogButton']");
+  let gameLogButton = $("div.ct-character-header__group--game-log.ct-character-header__group--game-log-last, [data-original-title='Game Log'] button, button[class*='-gamelog-button'], div[class*='campaignButtonGroup'][class*='GameLogButton'], div[class*='campaignButtonGroup'][aria-roledescription*='Game Log']");
   if(gameLogButton.length == 0){
     $(`[d='M243.9 7.7c-12.4-7-27.6-6.9-39.9 .3L19.8 115.6C7.5 122.8 0 135.9 0 150.1V366.6c0 14.5 7.8 27.8 20.5 34.9l184 103c12.1 6.8 26.9 6.8 39.1 0l184-103c12.6-7.1 20.5-20.4 20.5-34.9V146.8c0-14.4-7.7-27.7-20.3-34.8L243.9 7.7zM71.8 140.8L224.2 51.7l152 86.2L223.8 228.2l-152-87.4zM48 182.4l152 87.4V447.1L48 361.9V182.4zM248 447.1V269.7l152-90.1V361.9L248 447.1z']`).closest('[role="button"]'); // this is a fall back to look for the gamelog svg icon and look for it's button.
   }
