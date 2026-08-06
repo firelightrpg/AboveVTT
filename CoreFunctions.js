@@ -730,6 +730,7 @@ function sanitize_aoe_shape(shape){
             shape = "square";
             break;
         case "sphere":
+        case "emanation":
             shape = "circle";
             break;
         case "cylinder":
@@ -787,20 +788,45 @@ function add_aoe_to_statblock(html){
        
   })
 }
-
+async function embedDDBSection(target){
+  const ddbSections = target.find('.journal-ddb-section-embed')
+  const promises = [];
+  for(let i = 0; i<ddbSections.length; i++){
+    const $section = $(ddbSections[i]);
+    let url = $section.text().replaceAll("’", "'");
+    if(!url.includes('dndbeyond.com/sources'))
+      continue;
+    const promise = new Promise(async (resolve, reject) => { 
+      fetch_tooltip([undefined, url], url, (tooltip)=>{
+        resolve(tooltip);
+      });
+    });
+    const tooltip = await promise;
+    const html = $(tooltip.Tooltip).find('.tooltip-body>div:first-of-type');
+    $section.replaceWith(html);
+  }
+  return true;
+}
 function add_aoe_statblock_click(target, tokenId = undefined){
   target.find(`button.avtt-aoe-button`).off('click.aoe').on('click.aoe', function(e) {
     e.stopPropagation();
     const color = $(this).attr('data-style');
-    const shape = $(this).attr('data-shape');
-    const feet = $(this).attr('data-size');
+    let shape = $(this).attr('data-shape')
+    let feet = $(this).attr('data-size');
     const name = $(this).attr('data-name');
     const lineWidth = $(this).attr('data-line-width');
+
+
 
     if(is_abovevtt_page() || window.self != window.top){
       window.top.hide_player_sheet();
       window.top.minimize_player_sheet();
-
+      const circleIsSquare = window.top.get_avtt_setting_value('circleIsSquare');
+      shape = window.top.sanitize_aoe_shape(shape);
+      if(circleIsSquare && shape == 'circle'){
+        shape = 'square';
+        feet *= 2;
+      }
 
       let options = window.top.build_aoe_token_options(color, shape, feet / window.top.CURRENT_SCENE_DATA.fpsq, name, lineWidth / window.top.CURRENT_SCENE_DATA.fpsq)
       if(name == 'Darkness' || name == 'Maddening Darkness' ){
@@ -889,14 +915,14 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
   // to account for all the nuances of DNDB dice notation.
   // numbers can be swapped for any number in the following comment
   // matches "1d10", " 1d10 ", "1d10+1", " 1d10+1 ", "1d10 + 1" " 1d10 + 1 "
-  const strongRoll = /(<strong>)(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)(<\/strong>)/gi
-  const damageRollRegexBracket = /(\()(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)(\))/gi
-  const damageRollRegex = /([:\s>]|^)(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)([\.\):\s<,]|$)/gi
+  const strongRoll = /\s*(<strong>)(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)(<\/strong>)/gi
+  const damageRollRegexBracket = /\s*(\()(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)(\))/gi
+  const damageRollRegex = /\s*([:\s>]|^)(([0-9]+d[0-9]+)\s?([+-]\s?[0-9]+)?)([\.\):\s<,]|$)/gi
   // matches " +1 " or " + 1 "
-  const hitRollRegexBracket = /(?<![0-9]+d[0-9]+)(\()([+-]\s?[0-9]+)(\))/gi
-  const hitRollRegex = /(?<![0-9]+d[0-9]+)([:\s>]|^)([+-]\s?[0-9]+)([:\s<,]|$)/gi
-  const dRollRegex = /([\s>]|^)(\s?d[0-9]+)([^+-])/gi
-  const rechargeRegEx = /(Recharge [0-6]?\s?[—–-]?\s?[0-6])/gi
+  const hitRollRegexBracket = /\s*(?<![0-9]+d[0-9]+)(\()([+-]\s?[0-9]+)(\))/gi
+  const hitRollRegex = /\s*(?<![0-9]+d[0-9]+)([:\s>]|^)([+-]\s?[0-9]+)([:\s<,]|$)/gi
+  const dRollRegex = /\s*([\s>]|^)(\s?d[0-9]+)([^+-])/gi
+  const rechargeRegEx = /\s*(Recharge [0-6]?\s?[—–-]?\s?[0-6])/gi
   const actionType = "roll"
   const rollType = "AboveVTT"
   let updated = currentElement.html()
@@ -910,43 +936,69 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
     .replaceAll(rechargeRegEx, `<button data-exp='1d6' data-mod='' data-rolltype='recharge' data-actiontype='Recharge' class='avtt-roll-button' title='${actionType}'>$1</button>`)
 
   updated = add_aoe_to_statblock(updated);
-
-  
+      
   let ignoreFormatting = $(currentElement).find('.ignore-abovevtt-formating');
 
   let slashCommandElements = $(currentElement).find('.abovevtt-slash-command-journal')
 
   let $newHTML = $(`<div></div>`).html(updated);
-    $newHTML.find('.ignore-abovevtt-formating').each(function(index){
-      $(this).empty().append(ignoreFormatting[index].innerHTML);
-    })
+  $newHTML.find('.ignore-abovevtt-formating').each(function(index){
+    $(this).empty().append(ignoreFormatting[index].innerHTML);
+  })
 
-    $newHTML.find('.abovevtt-slash-command-journal').each(function(index){      
-      const slashCommands = [...slashCommandElements[index].innerHTML.matchAll(multiDiceRollCommandRegex)];
-      if (slashCommands.length === 0) return;
-      console.debug("inject_dice_roll slashCommands", slashCommands);
-      let updatedInnerHtml = slashCommandElements[index].innerHTML;
-      try {
-        slashCommands[0][0] = slashCommands[0][0].replace(/\(|\)/ig, '');
-        const diceRoll = DiceRoll.fromSlashCommand(slashCommands[0][0], window.PLAYER_NAME, window.PLAYER_IMG, "character", window.PLAYER_ID); // TODO: add gamelog_send_to_text() once that's available on the characters page without avtt running
-        updatedInnerHtml = updatedInnerHtml.replace(updatedInnerHtml, `<button class='avtt-roll-formula-button integrated-dice__container' title="${diceRoll.action?.toUpperCase() ?? "CUSTOM"}: ${diceRoll.rollType?.toUpperCase() ?? "ROLL"}" data-slash-command="${slashCommands[0][0]}">${diceRoll.expression}</button>`);
-      } catch (error) {
-        console.warn("inject_dice_roll failed to parse slash command. Removing the command to avoid infinite loop", slashCommands, slashCommands[0][0]);
-        updatedInnerHtml = updatedInnerHtml.replace(updatedInnerHtml, '');
-      }
-      $(this).empty().append(updatedInnerHtml);
-    })
-
-  
-  
-  
-
-
-  $(target).html($newHTML[0].innerHTML);
-
+  $newHTML.find('.abovevtt-slash-command-journal').each(function(index){      
+    const slashCommands = [...slashCommandElements[index].innerHTML.matchAll(multiDiceRollCommandRegex)];
+    if (slashCommands.length === 0) return;
+    console.debug("inject_dice_roll slashCommands", slashCommands);
+    let updatedInnerHtml = slashCommandElements[index].innerHTML;
+    try {
+      slashCommands[0][0] = slashCommands[0][0].replace(/\(|\)/ig, '');
+      const diceRoll = DiceRoll.fromSlashCommand(slashCommands[0][0], window.PLAYER_NAME, window.PLAYER_IMG, "character", window.PLAYER_ID); // TODO: add gamelog_send_to_text() once that's available on the characters page without avtt running
+      updatedInnerHtml = updatedInnerHtml.replace(updatedInnerHtml, `<button class='avtt-roll-formula-button integrated-dice__container' title="${diceRoll.action?.toUpperCase() ?? "CUSTOM"}: ${diceRoll.rollType?.toUpperCase() ?? "ROLL"}" data-slash-command="${slashCommands[0][0]?.replace(/[><\s]+$|^[<>\s]+/gi, '')}">${diceRoll.expression}</button>`);
+    } catch (error) {
+      console.warn("inject_dice_roll failed to parse slash command. Removing the command to avoid infinite loop", slashCommands, slashCommands[0][0]);
+      updatedInnerHtml = updatedInnerHtml.replace(updatedInnerHtml, '');
+    }
+    $(this).empty().append(updatedInnerHtml);
+  })
 
   
-  $(target).find('button.avtt-roll-button[data-rolltype]').each(function(){
+  
+  let $currTarget = $(target) 
+  const sidebar = $currTarget.closest('.ct-sidebar__inner');
+  if(sidebar.length>0 && sidebar.find(`[class*='styles_gameLogPane']`).length == 0){
+    
+    const currentTargetClone = $currTarget.clone(true, true);
+    currentTargetClone.show(); // incase of edits
+    $currTarget.hide();
+    $currTarget.before(currentTargetClone);
+    currentTargetClone.find(`[style*='display: none']`).remove();
+
+    //observer to see if original data edited
+    const observer = new MutationObserver((mutationsList) => {
+        observer.disconnect();
+        currentTargetClone.remove();
+        mutationsList.every(mutation =>{
+          $(mutation.target).closest('.above-vtt-visited').removeClass('above-vtt-visited');
+        }) 
+    });
+
+    
+    observer.observe($(target)[0], { characterData: true, subtree: true })
+    target = currentTargetClone;
+    $currTarget = $(target);
+    add_aoe_statblock_click($currTarget, tokenId);
+  } 
+  
+  $currTarget.html($newHTML[0].innerHTML);
+  $currTarget.find('.above-vtt-visited[style*="display: none"]').remove();
+
+
+ 
+
+
+  
+  $currTarget.find('button.avtt-roll-button[data-rolltype]').each(function(){
     const targetButton = $(this);
     let rollAction = targetButton.prevUntil('em>strong').find('strong').last().text().replace('.', '');
     rollAction = (rollAction == '') ? targetButton.prev('strong').last().text().replace('.', '') : rollAction;
@@ -972,7 +1024,40 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
     else if(targetButton.closest('.ability-block__stat, [class*="styles_stat__"]')?.find('.ability-block__heading, [class*="styles_statHeading"]').length>0){
       rollAction = targetButton.closest('.ability-block__stat, [class*="styles_stat__"]')?.find('.ability-block__heading, [class*="styles_statHeading"]').text();
       rollType = 'Check'
-    } 
+    } else if(targetButton.closest('.dnd-sheet .abilities-table-container').length>0){
+      if(targetButton.closest('td').length>0){
+        const columnIndex = targetButton.closest('td')[0].cellIndex;
+        rollAction = targetButton.closest('tr').find('td').first().text();
+        rollType = columnIndex == 2 ? 'Save' : 'Check';
+      }
+    } else if(targetButton.closest('.dnd-sheet .skills-box').length>0){
+      if(targetButton.closest('td').length>0){
+        rollAction = `${targetButton.closest('tr').find('td:nth-last-child(2)').text()} (${targetButton.closest('tr').find('td:last').text()})`;
+        rollType = 'Check'
+      }
+    } else if(targetButton.closest('.dnd-sheet .combat-metric').length>0){
+      rollAction = targetButton.closest('.dnd-sheet .combat-metric').find('.label').text();
+      rollType = 'Roll'
+    } else if(targetButton.closest('.dnd-sheet .hp-box').length>0){
+      rollAction = targetButton.closest('.box-field').parent().find('.label').text();
+      rollType = 'Roll'
+    } else if(targetButton.closest('.dnd-sheet .attacks-field').length>0){
+      if(targetButton.closest('td').length>0){
+        const columnIndex = targetButton.closest('td')[0].cellIndex; 
+        rollAction = targetButton.closest('tr').find('td').first().text();
+        if(columnIndex == 1){ 
+          rollType = 'To Hit';
+        }else if(columnIndex == 2){
+          rollType = 'Damage';
+          let saveText = targetButton.closest('td').prev('td').text();
+          const regex = /\D*(\d+)\s+(CON|INT|WIS|CHA|DEX|STR).*|.*(CON|INT|WIS|CHA|DEX|STR)\s+(\d+)\D*/i
+          if(saveText.match(regex)){
+            saveText = saveText.replace(regex, '$2$3 $1$4').trim();
+            if(saveText != undefined) targetButton.attr('data-save', saveText);
+          }
+        }
+      }
+    }
 
     if (rollAction == '' || rollAction == undefined){
       rollAction = 'Roll';
@@ -999,15 +1084,17 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
       rollType = 'Roll';
     }
     
-    targetButton.attr('data-actiontype', rollAction);
-    targetButton.attr('data-rolltype', rollType);
-
     const followingText = targetButton[0].nextSibling?.textContent?.trim()?.split(' ')[0]
     
     const damageType = followingText && window.ddbConfigJson?.damageTypes?.some(d => d.name.toLowerCase() == followingText.toLowerCase()) ? followingText : undefined
     if(damageType != undefined){
       targetButton.attr('data-damagetype', damageType);
     }
+    if(followingText && followingText.toLowerCase().match(/^\s*heal(ing)?/i)) rollType = 'Heal';
+    targetButton.attr('data-actiontype', rollAction);
+    targetButton.attr('data-rolltype', rollType);
+    
+   
   })
 
   const tokenName = window.all_token_objects && window.all_token_objects[tokenId]?.options?.name ? window.all_token_objects[tokenId]?.options?.name  : window.PLAYER_NAME
@@ -1017,11 +1104,11 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
   // terminate the clones reference, overkill but rather be safe when it comes to memory
   currentElement = null;
 
-  $(target).find(".avtt-roll-button").click(clickHandler);
-  $(target).find(".avtt-roll-button").on("contextmenu", rightClickHandler);
+  $currTarget.find(".avtt-roll-button").click(clickHandler);
+  $currTarget.find(".avtt-roll-button").on("contextmenu", rightClickHandler);
 
-  $(target).find("button.avtt-roll-formula-button").off('click.avttRoll').on('click.avttRoll', function(clickEvent) {
-  clickEvent.stopPropagation();
+  $currTarget.find("button.avtt-roll-formula-button").off('click.avttRoll').on('click.avttRoll', function(clickEvent) {
+    clickEvent.stopPropagation();
 
     const slashCommand = $(clickEvent.currentTarget).attr("data-slash-command");
     const followingText = $(clickEvent.currentTarget)[0].nextSibling?.textContent?.trim()?.split(' ')[0]
@@ -1029,7 +1116,7 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
     const diceRoll = DiceRoll.fromSlashCommand(slashCommand, tokenName, tokenImage, entityType, tokenId, damageType); // TODO: add gamelog_send_to_text() once that's available on the characters page without avtt running
     window.diceRoller.roll(diceRoll, undefined, undefined, undefined, undefined, damageType);
   });
-  $(target).find(`button.avtt-roll-formula-button`).off('contextmenu.rpg-roller').on('contextmenu.rpg-roller', function(e){
+  $currTarget.find(`button.avtt-roll-formula-button`).off('contextmenu.rpg-roller').on('contextmenu.rpg-roller', function(e){
     e.stopPropagation();
     e.preventDefault();
     let rollData = {}
@@ -2344,7 +2431,42 @@ function find_game_id() {
   console.log("find_game_id found:", window.gameId);
   return window.gameId;
 }
+function parse_img(url) {
+	if (typeof url !== "string") {
+		console.log("parse_img is converting", url, "to an empty string");
+		return "";
+	}
+	let retval = url.trim();
+	if (retval.startsWith("data:")) {
+		console.warn("parse_img is removing a data url because those are not allowed"); 
+		return "";
+	}
+	if (retval.includes("https://drive.google.com") || retval.includes("https://drive.usercontent.google.com")) {
+		const match = retval.match(GOOGLE_DRIVE_ID_REGEX);
+		if (match) {
+			return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w3000`;
+		} else if (retval.includes("https://drive.google.com")) {
+			// Fallback: split by '/' to get ID
+			return `https://drive.google.com/thumbnail?id=${retval.split('/')[5]}&sz=w3000`;
+		}
+	} else if (retval.startsWith("https://www.googleapis.com/drive/v3/files/")) {
+		const fileid = retval.split('files/')[1].split('?')[0];
+		return `https://drive.google.com/thumbnail?id=${fileid}&sz=w3000`;
+	} else if (retval.includes("dropbox.com")) {
+		const splitUrl = url.split('dropbox.com');
+		return `https://dl.dropboxusercontent.com${splitUrl[splitUrl.length - 1]}`;
+	} else if (retval.includes("https://1drv.ms/")) {
+		if (retval.split('/')[4].length !== 1) {
+			return `https://api.onedrive.com/v1.0/shares/u!${btoa(url)}/root/content`;
+		}
+		return retval;
+	}
+	if (retval.includes("discordapp.com")) {
+		return update_old_discord_link(retval);
+	}
 
+	return retval;	
+}
 async function normalize_scene_urls(scenes) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     return [];
@@ -2355,6 +2477,7 @@ async function normalize_scene_urls(scenes) {
       if (sceneData?.itemType === ItemType.Folder) {
         return sceneData;
       }
+      delete sceneData.map;
       return Object.assign(sceneData, {
         dm_map: await parse_img(sceneData.dm_map),
         player_map: await parse_img(sceneData.player_map),
@@ -2367,37 +2490,79 @@ async function normalize_scene_urls(scenes) {
 async function getAvttStorageUrl(url, highPriority = false){
   return await getFileFromS3(url.replace('above-bucket-not-a-url/', ''), highPriority);
 }
-async function updateImgSrc(url, container, video, highPriority = true, callback = () =>{}){
-  if(video == true && url?.includes('onedrive')){
-    container.attr('src', url.replace('embed?', 'download?'));
-  }
-  else if(url.includes("https://1drv.ms/"))
-  {
-    if(url.split('/')[4].length == 1){
-      url = url;
-    }
-    else{
-      url = "https://api.onedrive.com/v1.0/shares/u!" + btoa(url) + "/root/content";
-    }
-    container.attr('src', url);
+async function updateImgSrc(url, container, video, highPriority = true, callback){
+  
+ 
+    const handleIntersection = (entries, observer) => {
+      entries.forEach(async (entry) => {
+        if (!entry.isIntersecting)  return;
+        
+        const state = window.updateImageState.get(entry.target);
+        if(!state) return;
 
-  }
-  else if(url?.includes('google')){
-    throttleImgSrc(() => {
-      container.attr('src', parse_img(url));
-    })
-  }
-  else if(url.startsWith('above-bucket-not-a-url'))
-  {
-    url = await getAvttStorageUrl(url, highPriority)
-    container.attr('src', url);
-    callback();
-  }
-  else{
-    url = parse_img(url);
-    container.attr('src', url);
-  }
+        const targetContainer = $(entry.target);
+        let url = state.url;
+
+          if(video == true && url?.includes('onedrive')){
+            targetContainer.attr('src', url.replace('embed?', 'download?'));
+          }
+          else if(url.includes("https://1drv.ms/"))
+          {
+            if(url.split('/')[4].length == 1){
+              url = url;
+            }
+            else{
+              url = "https://api.onedrive.com/v1.0/shares/u!" + btoa(url) + "/root/content";
+            }
+            targetContainer.attr('src', url);
+
+          }
+          else if(url?.includes('google')){
+            throttleImgSrc(() => {
+              targetContainer.attr('src', parse_img(url));
+            })
+          }
+          else if(url.startsWith('above-bucket-not-a-url'))
+          {
+            url = await getAvttStorageUrl(url, true)
+            targetContainer.attr('src', url);
+            if (state.callback && !state.callbackFired) {
+              state.callbackFired = true;
+              state.callback();
+            }
+          }
+          else{
+            url = parse_img(url);
+            targetContainer.attr('src', url);
+          }
+        
+        observer.unobserve(entry.target);
+        window.updateImageState.delete(entry.target);
+        
+      });
+    };
+
+   
+    const options = {
+      root: null, // uses the default browser viewport
+      rootMargin: '200px 200px 200px 200px',
+      threshold: 0.1 // triggers when at least 10% of the image is visible
+    };
+
+    if(!window.inViewObserver)
+      window.inViewObserver = new IntersectionObserver(handleIntersection, options);
+    if(!window.updateImageState)
+      window.updateImageState = new WeakMap();
+
+    window.updateImageState.set(container[0], {
+      url,
+      callback,
+      callbackFired: false
+    });
+
+    window.inViewObserver.observe(container[0]);
 }
+
 async function updateTokenSrc(url, container, video=false){
   url = await parse_img(url)
   if(video == true && url?.includes('onedrive')){
@@ -2889,7 +3054,7 @@ function open_github_issue(title, body) {
 
 function display_url_embeded(url){
   const encodedUrl = encodeURIComponent(url);
-  const src = `${window.EXTENSION_PATH}iframe.html?src=${encodedUrl}`;
+  const src = `${window.EXTENSION_PATH}iframe.html?src=${encodedUrl.replace(/'/g, '%27')}`;
   const iframe = $(`<iframe id='embededFileFrame' data-src='${url}' src='${src}'></iframe>`);
   iframe.css({
     width: 'calc(100% + 2px)',
@@ -2939,6 +3104,11 @@ function createDialogMenu(rootId, options) {
   const contain = dialog.find('.js-popup-options')[0]
   options.map((opt) => dialogMenuOption(rootId, contain, opt));
   return dialog[0]; //note: return native element, NOT jquery
+}
+function basic_sanitize_html(html){
+  let sanitized = DOMPurify.sanitize(html,{ALLOWED_TAGS: ['video','img','div','p', 'b', 'button', 'span', 'path', 'rect', 'svg', 'a', 'hr', 'ul', 'li', 'ol', 'h3', 'h2', 'h4', 'h1', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'br', 'input', 'strong', 'em'], ADD_ATTR: ['target', 'contenteditable']}); //This array needs to include all HTML elements the extension sends via chat.
+  sanitized = sanitized.replace(/(\n\s{2,})+(<)|(>)(\n\s{2,})+|(\s{2,}\n)+(<)|(>)(\s{2,}\n)+/gi, '$2$3$6$7');
+  return sanitized;
 }
 
 //turn an element into a menu trigger
@@ -2997,7 +3167,7 @@ function addDialogCloser(element) {
 }
 
 function sendPopElement(element, whisper) {
-  const what = element.find(".magnify, .monster-image, video");
+  const what = element.find("img, video, .magnify, .monster-image");
   const src = what.find('source').length>0 ? what.find('source').attr('src') : what.attr("src");
   const video = what.prop('nodeName') === 'VIDEO';  
   if(src) {

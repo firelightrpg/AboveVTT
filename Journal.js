@@ -158,6 +158,7 @@ class JournalManager{
 		this.gameid=gameid;
 		this.notes = {};
 		this.chapters = [];
+		this.persistTimeout;
 
 		const loadJournalPromise = (async () => {
 			let journalData;
@@ -272,8 +273,13 @@ class JournalManager{
 			}
 		});
 	}
-
 	
+	setPersistTimeout = function(){
+		clearTimeout(this.persistTimeout);
+		this.persistTimeout = setTimeout(()=>{
+			this.persist();
+		}, 2000);
+	}
 	
 	persist(allowPlayerPersist=false){
 		if(!(window.DM || allowPlayerPersist)){
@@ -337,6 +343,8 @@ class JournalManager{
 	
 
 	sync = mydebounce(() => {
+		if(!window.DM)
+			return;
 		let self = this;
 		const isAnyParentShared = function (chapter) {
 			let parentShared = false;
@@ -348,26 +356,28 @@ class JournalManager{
 			}
 			return parentShared;
 		}
-		if (window.DM) {
-			window.MB.sendMessage('custom/myVTT/JournalChapters', {
-				chapters: self.chapters
-			});
-			let sendNotes = [];
+		
+		window.MB.sendMessage('custom/myVTT/JournalChapters', {
+			chapters: self.chapters,
+			override: true
+		});
+		let sendNotes = [];
 
 
-			for (let i in self.notes) {
-				const parentFolder = self.chapters.find(d => d.notes.includes(i));
-				if (self.notes[i].player || parentFolder?.shareWithPlayer || isAnyParentShared(parentFolder)) {
-					self.notes[i].id = i;
-					sendNotes.push(self.notes[i])
-				}
+		for (let i in self.notes) {
+			const parentFolder = self.chapters.find(d => d.notes.includes(i));
+			if (self.notes[i].player || parentFolder?.shareWithPlayer || isAnyParentShared(parentFolder)) {
+				self.notes[i].id = i;
+				sendNotes.push(self.notes[i])
 			}
-
-			self.sendNotes(sendNotes)
-
 		}
+
+		self.sendNotes(sendNotes)
+
+		
 	}, 5000);
-	sendNotes(sendNotes){
+	
+	sendNotes(sendNotes, updateDM = false){
 
 		let self=this;
 		if(sendNotes.length > 1 && JSON.stringify(sendNotes).length > 120000) {
@@ -378,7 +388,8 @@ class JournalManager{
 		}
 		else{
 			window.MB.sendMessage('custom/myVTT/notesSync',{
-				notes: sendNotes
+				notes: sendNotes,
+				updateDM 
 			});
 		}
 
@@ -471,12 +482,12 @@ class JournalManager{
 		let self=this;
 		
 		// Clear all elements from journal panel except the searchbar, which needs to stay in place between searches
-		journalPanel.body.children().not('#journal-control-container, #journal-control-container *').remove();
+		journalPanel.body.children().not('#journal-control-container, #journal-control-container *, #journal-included-content-box').remove();
 		
-		let searchInput = $(`<input name="journal-search" type="search" style="width:96%;margin:2%" placeholder="search journal">`);
+		const searchInput = $(`<input name="journal-search" type="search" style="width:96%;margin:2%" placeholder="search journal">`);
 		searchInput.off("input").on("input", mydebounce(() => {
-			let searchElement = document.getElementsByName("journal-search")[0];
-			let textValue = searchElement.value;
+			const searchElement = document.getElementsByName("journal-search")[0];
+			const textValue = searchElement.value;
 			this.build_journal(textValue);
 		}, 500));
 		searchInput.off("keyup").on('keyup', function(event) {
@@ -485,13 +496,13 @@ class JournalManager{
 			}
 		});
 		if(!searchText){
-			let searchElement = document.getElementsByName("journal-search")[0];
+			const searchElement = document.getElementsByName("journal-search")[0];
 			searchText = searchElement?.value || '';
 		}
-
-		let journalControlContainer = $(`<div id="journal-control-container"></div>`);
-		let expandAllButton = $(`<button class="expand-all-button token-row-button expand-collapse-button" title="Expand All Folders" style=""><span class="material-icons">expand</span></button>`);
-		let collapseAllButton = $(`<button class="collapse-all-button token-row-button expand-collapse-button" title="Collapse All Folders" style=""><span class="material-icons">vertical_align_center</span></button>`);
+		const includeContent = $(`<div id="journal-included-content-box" style="display: flex; margin-left: 7px; top: -7px; position: relative;"><input id="journal-included-content" type="checkbox"></input><label for="journal-included-content" style="display: inline-block; margin: 0px 0px 0px 5px;">Include Note Content</label></journal>`);
+		const journalControlContainer = $(`<div id="journal-control-container"></div>`);
+		const expandAllButton = $(`<button class="expand-all-button token-row-button expand-collapse-button" title="Expand All Folders" style=""><span class="material-icons">expand</span></button>`);
+		const collapseAllButton = $(`<button class="collapse-all-button token-row-button expand-collapse-button" title="Collapse All Folders" style=""><span class="material-icons">vertical_align_center</span></button>`);
 		expandAllButton.on('click', function(){
 			self.chapters.forEach(chapter => {
 				chapter.collapsed = false;
@@ -544,7 +555,7 @@ class JournalManager{
 			});
 		});
 		if (journalPanel.body.find('#journal-control-container').length === 0) {
-			journalPanel.body.append(journalControlContainer);
+			journalPanel.body.append(journalControlContainer, includeContent);
 			journalControlContainer.append(searchInput);
 			journalControlContainer.append(expandAllButton);
 			journalControlContainer.append(collapseAllButton);
@@ -619,8 +630,9 @@ class JournalManager{
 		// use to determine which journal items are rendered and which aren't.
 
 		if(searchText){
+			const includeContentChecked = $('#journal-included-content:checked').length>0;
 			for(const property in self.notes){
-				if(!searchText || self.notes[property].title?.toLowerCase().indexOf(searchText?.toLowerCase()) > -1){
+				if(!searchText || self.notes[property].title?.toLowerCase().indexOf(searchText?.toLowerCase()) > -1 || (includeContentChecked && self.notes[property].plain?.toLowerCase().indexOf(searchText?.toLowerCase()) > -1)){
 					relevantNotes[property] = self.notes[property];
 				}
 			}
@@ -1581,54 +1593,45 @@ class JournalManager{
 		    });
 		}
 	}
-
+	track_ability(key, updatedValue, noteId) {
+		if (window.JOURNAL.notes[noteId].abilityTracker === undefined) {
+			window.JOURNAL.notes[noteId].abilityTracker = {};
+		}
+		const asNumber = parseInt(updatedValue);
+		window.JOURNAL.notes[noteId].abilityTracker[key] = asNumber;
+		window.JOURNAL.persist();
+		debounceSendNote(noteId, window.JOURNAL.notes[noteId]);	
+	}
 	addTrackedInputs(target, id = {noteId: undefined, token: undefined}){
 		let numberFound = target.attr('data-number');
-		let spellName = target.attr('data-spell');
+		let spellName = target.attr('data-spell').trim();
 		const remainingText = target.hasClass('each') ? '' : `${spellName} slots remaining`
 		const {noteId, token} = id;
 
-		const track_ability = function (key, updatedValue) {
-			if(noteId != undefined){
-				if (window.JOURNAL.notes[noteId].abilityTracker === undefined) {
-					window.JOURNAL.notes[noteId].abilityTracker = {};
-				}
-				const asNumber = parseInt(updatedValue);
-				window.JOURNAL.notes[noteId].abilityTracker[key] = asNumber;
-				window.JOURNAL.persist();
-				debounceSendNote(noteId, window.JOURNAL.notes[noteId])
-			}
-			else if(token != undefined){
-				if (token.options.abilityTracker?.[spellName] >= 0) {
-					numberFound = token.options.abilityTracker[spellName]
-				} else {
-					token.track_ability(spellName, numberFound)
-				}
-				
-			}
-		}
+
 		const partyLootTable = target.closest('.party-item-table');
 		if(partyLootTable.length>0){
 			const rowNumber = target.closest('tr').index();
 			spellName = `${spellName}-${rowNumber}`;
 		}
-
-		if (noteId && window.JOURNAL.notes[noteId].abilityTracker?.[spellName] >= 0) {
-			numberFound = window.JOURNAL.notes[noteId].abilityTracker[spellName]
-		}
-		else if(token && token.options.abilityTracker?.[spellName] >= 0){
+		
+		if(token && token.options.abilityTracker?.[spellName] >= 0){
 			numberFound = token.options.abilityTracker[spellName]
 		}
 		else if(token){
 			token.track_ability(spellName, numberFound)
 		}
-		else {
-			track_ability(spellName, numberFound)
+		else if(noteId && window.JOURNAL.notes[noteId].abilityTracker?.[spellName] >= 0) {
+			numberFound = window.JOURNAL.notes[noteId].abilityTracker[spellName]
 		}
+		else {
+			window.JOURNAL.track_ability(spellName, numberFound, noteId);
+		}
+
 		const trackerTarget = token || window.JOURNAL.notes[noteId];
-		const trackFunction = noteId ? track_ability : undefined;
-		let input = createCountTracker(trackerTarget, spellName, numberFound, remainingText, "", trackFunction);
+		const trackFunction = noteId && !token ? window.JOURNAL.track_ability : undefined;
 		const playerDisabled = target.hasClass('player-disabled');
+		let input = createCountTracker(trackerTarget, spellName, numberFound, remainingText, "", trackFunction, noteId);
 		if (!window.DM && playerDisabled) {
 			input.prop('disabled', true);
 		}
@@ -1751,7 +1754,7 @@ class JournalManager{
 		})
 	}
 	
-	display_note(id, statBlock = false){
+	display_note(id, statBlock = false, scrollTop=0){
 		let self=this;
 		let noteAlreadyOpen = $(`div.note[data-id='${id}']`).length>0;
 		
@@ -1766,85 +1769,87 @@ class JournalManager{
 		});
 		if(!noteAlreadyOpen){
 			note.attr('title',self.notes[id].title);
-			if(window.DM){
+			if(window.DM || self.notes[id].text.includes('.dnd-sheet')){
 				let visibility_container=$("<div class='visibility-container'/>");
 
 			
+				if(window.DM ){
+					let toggle_container = $(`<div class='visibility-toggle-container'></div`)
 
-				let toggle_container = $(`<div class='visibility-toggle-container'></div`)
+					let visibility_toggle=$("<input type='checkbox' name='allPlayers'/>");
+					let visibility_row = $(`<div class='visibility_toggle_row'><label for='allPlayers'>All Players</label></div>`)
+					visibility_row.append(visibility_toggle)
+					toggle_container.append(visibility_row);
+					visibility_toggle.change(function(){
 
-				let visibility_toggle=$("<input type='checkbox' name='allPlayers'/>");
-				let visibility_row = $(`<div class='visibility_toggle_row'><label for='allPlayers'>All Players</label></div>`)
-				visibility_row.append(visibility_toggle)
-				toggle_container.append(visibility_row);
-				visibility_toggle.change(function(){
-
-					window.JOURNAL.note_visibility(id,visibility_toggle.is(":checked"));
-					window.JOURNAL.build_journal();
-					toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', visibility_toggle.is(":checked"));
-					toggle_container.find(`input:not([name='allPlayers'])`).prop('checked', visibility_toggle.is(":checked"));
+						window.JOURNAL.note_visibility(id,visibility_toggle.is(":checked"));
+						window.JOURNAL.build_journal();
+						toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', visibility_toggle.is(":checked"));
+						toggle_container.find(`input:not([name='allPlayers'])`).prop('checked', visibility_toggle.is(":checked"));
+						
 					
-				
-				});
+					});
 
 
-				for(let i =0; i<window.playerUsers.length; i++){
-					if(toggle_container.find(`input[name='${window.playerUsers[i].userId}']`).length == 0){
-						let visibility_toggle=$(`<input type='checkbox' name='${window.playerUsers[i].userId}'/>`);
-						let visibility_row = $(`<div class='visibility_toggle_row'><label for='${window.playerUsers[i].userId}'>${window.playerUsers[i].userName}</label></div>`)
-						
-						visibility_row.append(visibility_toggle)
+					for(let i =0; i<window.playerUsers.length; i++){
+						if(toggle_container.find(`input[name='${window.playerUsers[i].userId}']`).length == 0){
+							let visibility_toggle=$(`<input type='checkbox' name='${window.playerUsers[i].userId}'/>`);
+							let visibility_row = $(`<div class='visibility_toggle_row'><label for='${window.playerUsers[i].userId}'>${window.playerUsers[i].userName}</label></div>`)
+							
+							visibility_row.append(visibility_toggle)
 
-						visibility_toggle.prop("checked",(self.notes[id]?.player instanceof Array && self.notes[id]?.player.includes(`${window.playerUsers[i].userId}`)));
-						
-						visibility_toggle.change(function(){
-							let sharedUsers = toggle_container.find(`input:checked:not([name='allPlayers'])`).toArray().map(d => d.name);
-							if(sharedUsers.length == 0)
-								sharedUsers = false;
-							window.JOURNAL.note_visibility(id,sharedUsers);
-							window.JOURNAL.build_journal();
-						});
-						
-						toggle_container.append(visibility_row);
+							visibility_toggle.prop("checked",(self.notes[id]?.player instanceof Array && self.notes[id]?.player.includes(`${window.playerUsers[i].userId}`)));
+							
+							visibility_toggle.change(function(){
+								let sharedUsers = toggle_container.find(`input:checked:not([name='allPlayers'])`).toArray().map(d => d.name);
+								if(sharedUsers.length == 0)
+									sharedUsers = false;
+								window.JOURNAL.note_visibility(id,sharedUsers);
+								window.JOURNAL.build_journal();
+							});
+							
+							toggle_container.append(visibility_row);
+						}
 					}
+
+					visibility_toggle.prop("checked",self.notes[id].player == true);
+						
+					if(visibility_toggle.is(":checked"))
+						toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', true);
+					else
+						toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', false);
+					
+					
+					let shareWithPlayer = $("<button class='share-player-visibility'>Share with players</button>");
+					shareWithPlayer.append(toggle_container);
+					visibility_container.append(shareWithPlayer);
+					
+					let popup_btn=$("<button>Force Open by Players</button>");
+					
+					popup_btn.click(function(){
+						window.MB.sendMessage('custom/myVTT/note',{
+								id: id,
+								note:self.notes[id],
+								popup: true,
+							});
+					});
+					
+					visibility_container.append(popup_btn);
+
+					let force_close_popup_btn=$("<button>Force Closed by Players</button>")
+
+					force_close_popup_btn.click(function(){
+						window.MB.sendMessage('custom/myVTT/note',{
+								id: id,
+								note:self.notes[id],
+								popup: false,
+							});
+					});
+
+					visibility_container.append(force_close_popup_btn);
+					
 				}
 
-				visibility_toggle.prop("checked",self.notes[id].player == true);
-					
-				if(visibility_toggle.is(":checked"))
-					toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', true);
-				else
-					toggle_container.find(`input:not([name='allPlayers'])`).prop('disabled', false);
-				
-				
-				let shareWithPlayer = $("<button class='share-player-visibility'>Share with players</button>");
-				shareWithPlayer.append(toggle_container);
-				visibility_container.append(shareWithPlayer);
-				
-				let popup_btn=$("<button>Force Open by Players</button>");
-				
-				popup_btn.click(function(){
-					window.MB.sendMessage('custom/myVTT/note',{
-							id: id,
-							note:self.notes[id],
-							popup: true,
-						});
-				});
-				
-				visibility_container.append(popup_btn);
-
-				let force_close_popup_btn=$("<button>Force Closed by Players</button>")
-
-				force_close_popup_btn.click(function(){
-					window.MB.sendMessage('custom/myVTT/note',{
-							id: id,
-							note:self.notes[id],
-							popup: false,
-						});
-				});
-
-				visibility_container.append(force_close_popup_btn);
-				
 				let edit_btn=$("<button>Edit</button>");
 				edit_btn.click(function(){
 					note_container.remove();
@@ -1870,6 +1875,11 @@ class JournalManager{
 
 		}
 		note_text.append(self.notes[id].text); // valid tags are controlled by tinyMCE.init()
+		$(note_text).find('.injected-input, .added-input-desc').remove();
+		$(note_text).find('.add-input:not(.avtt-custom-tracker)').replaceWith((i, innerHtml) => {
+			return innerHtml;
+		})
+
 		this.translateHtmlAndBlocks(note_text, id).then(() => {	
 			add_journal_roll_buttons(note_text);
 			this.add_journal_tooltip_targets(note_text);
@@ -1883,15 +1893,280 @@ class JournalManager{
 			}
 			note.find("a").attr("target", "_blank");
 			note_container.append(note);
-			
+
+			const persistNoteContent = (forceSave = false, rescanStatBlock = true) => {
+				const closestNote = note_text.clone(true, true);
+				const avttImages = closestNote.find('img[data-src*="above-bucket-not-a-url"]');
+				avttImages.attr('src', '');
+				avttImages.attr('href', '');
+				closestNote.find('a:empty, button:empty, .add-table-row, .table-row-drag-handle, .header-spacer').remove();
+				const noteButtons = closestNote.find('button');
+				noteButtons.replaceWith((i, innerHTML)=>{
+					const command = noteButtons[i].getAttribute('data-slash-command');
+					if(command){
+						innerHTML = `[roll]${command}[/roll]`
+					}
+					return innerHTML;
+				})
+				closestNote.find('.abovevtt-slash-command-journal').replaceWith((i, innerHTML) =>{
+					return innerHTML;
+				})
+				const sanitizedHTML = basic_sanitize_html(closestNote[0].innerHTML).replaceAll(/\[(\/)?spell\]/gi, `[$1spell]`).replaceAll(/\[(\/)?magicitem\]/gi, `[$1magicItem]`).replaceAll(/\[(\/)?item\]/gi, `[$1item]`);
+				const changes = forceSave || $(sanitizedHTML).text().replace(/[\s\n\r]/gi, '') != self.notes[id].plain.replace(/[\s\n\r]/gi, '');
+				if(changes){
+					self.notes[id].text = sanitizedHTML;
+					self.notes[id].plain = $(sanitizedHTML).text();
+					window.JOURNAL.setPersistTimeout();
+					debounceSendNote(id, self.notes[id]);
+					if(rescanStatBlock){
+						debounceRescanStatBlock(note_container, id);
+					}
+				}
+			};
+
+			note_text.find('table').each(function() {
+				const $table = $(this);
+				const rowsContainer = $table.find('tbody').length > 0 ? $table.find('tbody') : $table;
+				if (rowsContainer.find('> tr').length > 1) {
+					rowsContainer.find('> tr').each(function() {
+						const $row = $(this);
+						if ($row.find('> .table-row-drag-handle').length === 0) {
+							const $handleCell = $('<td class="table-row-drag-handle" aria-hidden="true">⋮⋮</td>');
+							$row.prepend($handleCell);
+						}
+					});
+					rowsContainer.sortable({
+						items: '> tr',
+						handle: '.table-row-drag-handle',
+						helper: function(event, ui) {
+							const helper = ui.clone();
+							helper.children().each(function(index) {
+								$(this).width(ui.children().eq(index).outerWidth());
+							});
+							return helper;
+						},
+						placeholder: 'ui-sortable-placeholder',
+						update: function() {
+							persistNoteContent(true, false);
+						}
+					})
+				}
+				const header = $table.find('th').first().parent().parent();
+				header.find('> tr').each(function() {
+					const $row = $(this);
+					if ($row.find('> .header-spacer').length === 0) {
+						const $handleCell = $('<th class="header-spacer" aria-hidden="true"></td>');
+						$row.prepend($handleCell);
+					}
+				});
+				
+				if($table.next('.add-table-row').length>0)
+					return;
+				const add_table_row = $(`<button class="add-table-row">+</button>`);
+				$table.after(add_table_row);
+
+				
+			});
+
+			note_text.off('click.addRow').on('click.addRow', '.add-table-row', function (e) {
+				e.preventDefault();
+				const table = $(e.target).prev('table');
+				const tableBody = $(table).find('tbody');
+				const targetContainer = tableBody.length>0 ? tableBody : table;
+				const newRow = targetContainer.find('>tr:last').clone();
+				newRow.find('td:not(.table-row-drag-handle), th').html('');
+				targetContainer.append(newRow);
+			});
+
 			note.off('click').on('click', '.tooltip-hover[href*="https://www.dndbeyond.com/sources/dnd/"], .int_source_link ', function (event) {
 				event.preventDefault();
 				render_source_chapter_in_iframe(event.target.href);
 			});
-		
+			note.off('focusout.editable').on('focusout.editable', '[contenteditable="true"]', (e)=>{
+				if($('[contenteditable="true"] :is(:focus, :focus-within)').length>0) return;
+				if($(e.target).is('.injected-input')) return;  
+				persistNoteContent();
+			});
+			note.off('change.checkbox').on('change.checkbox', 'input', (e)=>{
+				if (e.target && e.target.nodeName === 'INPUT' && e.target.type === 'checkbox') {				
+					if (e.target.checked) {
+						e.target.setAttribute('checked', 'checked');
+					} else {
+						e.target.removeAttribute('checked');
+					}
+				}
+				persistNoteContent(true, false);
+			})
 			this.positionNotePins(id, note_text);
+			note_text[0].scrollTop = scrollTop;
 		});	
-		
+		if(note_text.find('.dnd-sheet').length>0){
+			note_text.find('a').attr('contenteditable', 'false');
+			note_container.find('.popout-button, .lockStatButton, .download_button, .upload_button').remove();
+			const lockStatButton = $(`<div class='lockStatButton' style="cursor: pointer; position: relative; display:inline-block; color: #ddd;">
+										<span title="lock buttons" class="material-symbols-outlined" style="font-size: 20px; position: relative; top: 4px;">
+										${!window.lockTemplateStatBlocks ? "lock_open_right" : "lock"}
+										</span>
+									</div>`)
+			lockStatButton.off('click.lockStatBlock').on('click.lockStatBlock', ()=>{
+			window.lockTemplateStatBlocks = !window.lockTemplateStatBlocks;
+			const span = lockStatButton.find('>span');
+			if(window.lockTemplateStatBlocks){
+				note_text.find('.dnd-sheet button').attr("contenteditable", "false");
+				span.text('lock');
+			} else{
+				note_text.find('.dnd-sheet [contenteditable]:not(a)').attr("contenteditable", "true");
+				span.text('lock_open_right');
+			}
+			})
+			
+			if(window.lockTemplateStatBlocks){
+				note_text.find('.dnd-sheet button').attr("contenteditable", "false");
+			} else{
+				note_text.find('.dnd-sheet [contenteditable]:not(a)').attr("contenteditable", "true");
+			}
+
+			const downloadStat = $(`<div class='download_button' style="cursor: pointer; position: relative; display:inline-block; color: #ddd;">
+										<span title="Download Statblock as HTML" class="material-symbols-outlined" style="font-size: 24px; position: relative; top: 4px;">
+										download
+										</span>
+									</div>`)
+			downloadStat.off('click.exportStatBlock').on('click.exportStatBlock', function () { 
+				build_import_loading_indicator('Preparing Export File');
+
+				const currentdate = new Date(); 
+				const datetime = `${currentdate.getFullYear()}-${(currentdate.getMonth()+1)}-${currentdate.getDate()}`
+				const santizedHtml = basic_sanitize_html(window.JOURNAL.notes[id].text);
+				let html = $(`${santizedHtml}`);
+				html.find('.injected-input, .added-input-desc').remove();
+				html.find('.add-input:not(.avtt-custom-tracker)').replaceWith((i, innerHtml) => {
+					return innerHtml;
+				})
+				self.translateHtmlAndBlocks(html).then(()=>{
+					self.add_journal_tooltip_targets(html);
+					html.find('a').attr('contenteditable', 'false');
+					html.find('.add-input').each(function(){window.JOURNAL.addTrackedInputs($(this), {noteId: id})})
+					html.find('.abovevtt-slash-command-journal').replaceWith((i, innerHTML) =>{
+						return `[roll]${innerHTML}[/roll]`;
+					})
+					html = `<style id='contentStyles'>
+						${self.content_styles()}			
+						.custom-stat{
+							color: --var(--pc-template-text-color, #111) !important;
+							border: none !important;
+						}
+						.ignore-abovevtt-formating{
+							border: none !important;
+						}   		   
+					</style>
+					<script>
+						window.addEventListener("click", (e) => {
+							if (e.target && e.target.nodeName === 'INPUT' && e.target.type === 'checkbox') {				
+								if (e.target.checked) {
+									e.target.setAttribute('checked', 'checked');
+								} else {
+									e.target.removeAttribute('checked');
+								}
+							}
+							window.addEventListener('input', (e) => {
+								if (e.target && e.target.nodeName === 'INPUT' && e.target.type === 'number') {
+									e.target.setAttribute('value', e.target.value);
+								}
+							});
+						});
+						</script>
+					${html[0].outerHTML}			
+					<script>
+						document.querySelectorAll('table').forEach((table) => {
+							if (table.nextElementSibling?.classList.contains('add-table-row')) return;
+
+							const addTableRowButton = document.createElement('button');
+							addTableRowButton.className = 'add-table-row';
+							addTableRowButton.type = 'button';
+							addTableRowButton.textContent = '+';
+							table.insertAdjacentElement('afterend', addTableRowButton);
+						});
+
+						document.addEventListener('click', (e) => {
+							const addButton = e.target.closest('.add-table-row');
+							if (!addButton) return;
+
+							e.preventDefault();
+
+							const table = addButton.previousElementSibling;
+							if (!table || table.tagName.toLowerCase() !== 'table') return;
+
+							const rowContainer = table.tBodies[0] || table;
+							const lastRow = rowContainer.rows[rowContainer.rows.length - 1];
+							if (!lastRow) return;
+
+							const newRow = lastRow.cloneNode(true);
+							newRow.querySelectorAll('td, th').forEach((cell) => {
+								cell.innerHTML = '';
+							});
+
+							rowContainer.appendChild(newRow);
+						});
+					</script>`;
+					download(html,`${window.CAMPAIGN_INFO.name}-${datetime}-pctemplate.html`,"text/html");
+						
+					$(".import-loading-indicator").remove();        
+				})
+				
+				
+			});
+			const uploadStat = $(`<div class='upload_button' style="cursor: pointer; position: relative; display:inline-block; color: #ddd;">
+				<span onclick='import_open_template();' title="Upload HTML Statblock" class="material-symbols-outlined" style="font-size: 24px; position: relative; top: 4px;">
+					upload
+				</span>
+				<input accept='.html' id='input_pc_template' type='file' single style='display: none' />
+				</div>
+			`);
+			uploadStat.find('input[type="file"]').change(function(e) {
+				import_pc_template_html(e.target.files, note_text, id);
+			});
+			note_container.find('.title_bar_text').css('display', 'inline-block');
+			note_container.find('.title_bar').prepend(lockStatButton, downloadStat, uploadStat);
+			note_container.find('.title_bar').css({
+				'display': 'flex',
+				'align-items': 'center'
+			});
+			note_text.find('table').each(function() {
+				const $table = $(this);
+				if($table.next('.add-table-row').length>0)
+					return;
+				const add_table_row = $(`<button class="add-table-row">+</button>`);
+				$table.after(add_table_row);
+
+				const rowsContainer = $table.find('tbody').length > 0 ? $table.find('tbody') : $table;
+				if (rowsContainer.find('> tr').length > 1) {
+					rowsContainer.sortable({
+						items: '> tr',
+						helper: function(event, ui) {
+							const helper = ui.clone();
+							helper.children().each(function(index) {
+								$(this).width(ui.children().eq(index).outerWidth());
+							});
+							return helper;
+						},
+						placeholder: 'ui-sortable-placeholder',
+						update: function() {
+							persistNoteContent(true, false);
+						}
+					})
+				}
+			});
+			
+			note_text.off('click.addRow').on('click.addRow', '.add-table-row', function (e) {
+				e.preventDefault();
+				const table = $(e.target).prev('table');
+				const tableBody = $(table).find('tbody');
+				const targetContainer = tableBody.length>0 ? tableBody : table;
+				const newRow = targetContainer.find('>tr:last').clone();
+				newRow.find('td:not(.table-row-drag-handle), th').html('');
+				targetContainer.append(newRow);
+			});
+	}
 	}
 	add_journal_tooltip_targets(target){
 		const monsterIds = [];
@@ -1956,20 +2231,37 @@ class JournalManager{
 				return;	
 			}
 			const addMonsterButton = function(){
-				if ($self.hasClass('monster-tooltip')) {
-					$self.css('display', 'inline-block')
-					const monsterId = $self.attr('data-tooltip-href').match(/monsters\/(\d+)/i)?.[1];
-					$self.attr('data-monsterid', monsterId);
-					monsterIds.push(monsterId);
-					window.JOURNAL.addTokenDragToMonsterLink(self);
-				}
+				$self.css('display', 'inline-block')
+				const monsterId = $self.attr('data-tooltip-href')?.match(/monsters\/(\d+)/i)?.[1];
+				if(monsterId === undefined) return;
+				$self.attr('data-monsterid', monsterId);
+				monsterIds.push(monsterId);
+				window.JOURNAL.addTokenDragToMonsterLink(self);
 			}
-			if(!$self.attr('data-tooltip-href')){
-				if(self.href.match(/\/spells\/[0-9]|\/magic-items\/[0-9]|\/monsters\/[0-9]|\/sources\//gi)){
-					$self.attr('data-moreinfo', `${self.href}`);
-				}	
-				window.JOURNAL.getDataTooltip(self.href, function(url, typeClass){
+			if(self.href.match(/\/spells\/[0-9]|\/magic-items\/[0-9]|\/monsters\/[0-9]|\/sources\//gi)){
+				$self.attr('data-moreinfo', `${self.href}`);
+			}
+			if(!$self.hasClass('monster-tooltip')){
+				window.JOURNAL.getDataTooltip(self.href, function(url, typeClass, isRitual){
+					const matched = url.match(/\/(\d+)[^/]*-tooltip(\?.*)?$/i)
+					if(matched){
+						const tooltipId = matched[1];
+						let newHref = self.href.split(/\/(spells|magic-items|equipments|adventuring-gear)\//gi);
+						if(newHref.length>1)
+							newHref[newHref.length-1] = newHref[newHref.length-1].replace('/','-');
+						newHref = newHref.join('/')
+						const newUrl = `${newHref.replace(/(\d+-)?([^/]*)(-tooltip)?(\?.*)?$/i, `${tooltipId}-$2`)}`;
+						$self.attr('href', newUrl);
+						if(self.href.match(/\/spells\/[0-9]|\/magic-items\/[0-9]|\/monsters\/[0-9]|\/sources\//gi)){
+							$self.attr('data-moreinfo', `${newUrl}`);
+						}
+					}
 					$self.attr('data-tooltip-href', url);
+					if(isRitual && $self.find('.ritual-icon-svg').length==0){
+						const ritualIcon = $(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12.17 14.83" class="ritual-icon-svg"><path fill="var(--font-color, #111)" d="M3,0H1.22A1.23,1.23,0,0,0,0,1.24V13.6a1.23,1.23,0,0,0,1.22,1.24H11.41a.77.77,0,0,0,.76-.77c0-.43-.34-1-.76-1H2.13c-.33,0-.61,0-.61-.34s.27-1,.61-1H11a1.23,1.23,0,0,0,1.22-1.24V1.24A1.23,1.23,0,0,0,11,0H3.08"></path><path fill="var(--background-color, #FFF)" d="M4.35,2.23A11.66,11.66,0,0,1,6.2,2.09a3.12,3.12,0,0,1,2.08.54A1.7,1.7,0,0,1,8.86,4,1.8,1.8,0,0,1,7.64,5.67v0A1.72,1.72,0,0,1,8.58,7a13.32,13.32,0,0,0,.53,1.88H7.84a9.62,9.62,0,0,1-.45-1.59c-.19-.88-.51-1.16-1.21-1.18H5.57V8.88H4.35Zm1.22,3H6.3c.83,0,1.35-.44,1.35-1.11S7.12,3,6.33,3a3.53,3.53,0,0,0-.76.06Z"></path></svg>`);         
+						$self.append(ritualIcon)
+					}
+					
 					$self.toggleClass(`${typeClass}-tooltip`, true);
 					addMonsterButton();
 				});	
@@ -2084,40 +2376,79 @@ class JournalManager{
 		let itemId = (url.matchAll(urlRegex).next().value) ? url.matchAll(urlRegex).next().value[1] : 0;
 		let itemType = url.matchAll(urlType).next().value[1];
 		url = url.toLowerCase();
-		if(itemType == 'sources')
+		if(itemType == 'sources' || itemType == 'compendium')
 			return 
-		if(itemId == 0 || itemType == 'equipment'){
+		itemType = itemType == 'equipment' ? 'adventuring-gear' : itemType
+		if(itemId == 0 || (['spells', 'magic-items', 'adventuring-gear'].includes(itemType) && get_avtt_setting_value('2024Tooltips'))){
 			if(window.spellIdCache[url]){
-				callback(`www.dndbeyond.com/${window.spellIdCache[url].type}/${window.spellIdCache[url].id}-tooltip?disable-webm=1`, itemType.slice(0, -1));	
+				callback(`www.dndbeyond.com/${window.spellIdCache[url].type}/${window.spellIdCache[url].id}-tooltip?disable-webm=1`, itemType.slice(0, -1), window.spellIdCache[url].isRitual);	
+				return;
+			}
+			else if(itemId>0 && ['spells', 'magic-items', 'adventuring-gear'].includes(itemType)){       
+				if(itemType == 'spells')
+					itemId = getNonLegacySpellId({id: itemId});
+				else if(itemType == 'magic-items' || itemType == 'adventuring-gear')
+					itemId = getNonLegacyItemId({id: itemId});
 			}
 			else{
 				if(url.includes('weapon-properties')){
 					let splitUrl = url.split('/');
-					let name = splitUrl[splitUrl.length-1];
+					let name = decodeURIComponent(splitUrl[splitUrl.length-1].replaceAll('-', ' ')).replaceAll("’", "'");;
 					itemId = window.ddbConfigJson.weaponProperties.filter(d=> d.name.toLowerCase() == name.toLowerCase())[0]?.id
 				}
-				else{
-							
+				else if(itemType == 'spells'){
+					const splitUrl = url.split('spells/');
+					const name = decodeURIComponent(splitUrl[splitUrl.length-1].replaceAll('-', ' ')).replaceAll("’", "'");
+					const isLegacy = !get_avtt_setting_value('2024Tooltips');
+					let spell = window.SPELLS_CACHE.filter(d => d.definition.name.toLowerCase() == name.toLowerCase() && d.definition.isLegacy == isLegacy)
+					if(!spell.length){
+						console.warn(`spell not found`, name, `isLegacy`, isLegacy);
+						spell = window.SPELLS_CACHE.filter(d => d.definition.name.toLowerCase() == name.toLowerCase())
+					}
+					if(!spell.length){
+						console.warn(`spell not found`, name);
+						return;
+					}	
+					itemId = `${spell[0].definition.id}-${splitUrl[splitUrl.length-1].replace('/', '-')}`;
+				}
+				else if(itemType == 'magic-items' || itemType == 'adventuring-gear'){
+					const splitUrl = url.split(/(magic-items|adventuring-gear|equipment)\//gi);
+					const name = decodeURIComponent(splitUrl[splitUrl.length-1].replaceAll('-', ' ')).replaceAll("’", "'");
+					const isLegacy = !get_avtt_setting_value('2024Tooltips');
+					let item = window.ITEMS_CACHE.filter(d => d.name.toLowerCase() == name.toLowerCase() && d.isLegacy == isLegacy)
+					if(!item.length){
+						console.warn(`item not found`, name, `isLegacy`, isLegacy);
+						item = window.ITEMS_CACHE.filter(d => d.name.toLowerCase() == name.toLowerCase())
+					}
+					if(!item.length){
+						console.warn(`item not found`, name);
+						return;
+					}		
+					itemId = `${item[0].id}-${splitUrl[splitUrl.length-1].replace('/', '-')}`;
+				}
+				else{	
 					let itemPage = await $.get(url)		
 					if($(itemPage).find('.b-breadcrumb-wrapper>.b-breadcrumb-item:last-of-type a').length>0){
 						let splitUrl = $(itemPage).find('.b-breadcrumb-wrapper>.b-breadcrumb-item:last-of-type a').attr('href').split('/');
 						itemId = parseInt(splitUrl[splitUrl.length-1]);
-						itemType = $(itemPage).find('.details-container-content-description-text span:first-of-type')?.text()?.toLowerCase()?.includes('weapon') ? 'weapons' : url.includes('equipment') ? 'adventuring-gear' : itemType
-					    
+						itemType = $(itemPage).find('.details-container-content-description-text span:first-of-type')?.text()?.toLowerCase()?.includes('weapon') ? 'weapons' : url.includes('equipment') ? 'adventuring-gear' : itemType   
 					}
 					else {
 						const regex = /window\.cobaltVcmList\.push\(\{.+id\:([0-9]+)/g;
 						itemId = itemPage.matchAll(regex).next().value[1];	
 					}
 				}
-				window.spellIdCache[url] = {id: itemId, type: itemType};
-				callback(`www.dndbeyond.com/${itemType}/${itemId}-tooltip?disable-webm=1`, itemType.slice(0, -1));
+						
 			}	
 		}
-		else{
-			callback(`www.dndbeyond.com/${itemType}/${itemId}-tooltip?disable-webm=1`, itemType.slice(0, -1));	
-		}
-		
+		const isRitual = itemType == 'spells' ? window.SPELLS_CACHE.filter(d=> {
+				let newItemId = itemId;
+				if(typeof itemId == 'string') newItemId = itemId.replace(/(\d+)-.*/gi,'$1');
+				return d.definition.id == newItemId
+			})[0]?.definition.ritual 
+			: false;
+		window.spellIdCache[url] = {id: itemId, type: itemType, isRitual};
+		callback(`www.dndbeyond.com/${itemType}/${itemId}-tooltip?disable-webm=1`, itemType.slice(0, -1), isRitual);
 	}
 	async getNotes(){
 	for(let note in window.JOURNAL.notes){
@@ -2318,7 +2649,8 @@ class JournalManager{
 		return immediateChildren;
 	}
 	async translateHtmlAndBlocks(target, displayNoteId, isStatBlock=true) {
-    	let pastedButtons = target.find('.avtt-roll-button, [data-rolltype="recharge"], .integrated-dice__container, span[data-dicenotation]');
+		await embedDDBSection(target);
+		let pastedButtons = target.find('.avtt-roll-button, [data-rolltype="recharge"], .integrated-dice__container, span[data-dicenotation]');
     	target.find('>style:first-of-type, >style#contentStyles').remove();
 		
 		for(let i=0; i<pastedButtons.length; i++){
@@ -2343,7 +2675,7 @@ class JournalManager{
 				embededIframes[i].src = embededIframes[i].src.replace(/youtube(-nocookie)?\.com/gi, 'youtube-nocookie.com');
 			}
 			else if(!embededIframes[i].src.startsWith(window.EXTENSION_PATH)){
-				embededIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(embededIframes[i].src)}`;
+				embededIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(embededIframes[i].src).replace(/'/g, '%27')}`;
 			}
 		}
 
@@ -2595,7 +2927,7 @@ class JournalManager{
 				const currentSpan = $(`<div>${m1}</div>`);
 				currentSpan.find('a.ignore-abovevtt-formating, .ignore-abovevtt-formating:has(a)').removeClass('ignore-abovevtt-formating');
 				const trackText = currentSpan.text().replace(/([a-zA-Z\s]+)([\d]+)/gi, function(m, m1, m2){
-					return `<span>${m1}</span><span class="add-input each" data-number="${m2}" data-spell="${m1}"></span>`
+					return `<span>${m1}</span><span class="add-input each avtt-custom-tracker" data-number="${m2}" data-spell="${m1}"></span>`
 				})
 				const children = currentSpan.find('*');
 				if (children.length>0) {
@@ -2670,19 +3002,20 @@ class JournalManager{
 			}
 			
 			const newFrame = $(`<iframe class='journal-site-embed'
-						src='${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(url)}'
+						src='${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(url).replace(/'/g, '%27')}'
 						allowfullscreen
 						webkitallowfullscreen
 						mozallowfullscreen></iframe>`)
 			$(iframes[i]).replaceWith(newFrame);
 		}
+
 		const avttIframes = $newHTML.find('iframe[src*="src=above-bucket-not-a-url"]');
 		for (let i = 0; i < avttIframes.length; i++) {
 			const currSrc = avttIframes[i].src.replaceAll("’", "'");
 			const urlParams = new URLSearchParams(currSrc.split('?')[1]);
 			const origSrc = urlParams.get('src');
 			const src = await getAvttStorageUrl(origSrc, true);
-			avttIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(src)}`;
+			avttIframes[i].src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(src).replace(/'/g, '%27')}`;
 		}
 		const avttImages = $newHTML.find('img[data-src*="above-bucket-not-a-url"]')
 
@@ -2695,7 +3028,7 @@ class JournalManager{
 	    $newHTML.find('.ignore-abovevtt-formating').each(function(index){
 			$(this).empty().append(ignoreFormatting[index].innerHTML);
 	    })
-
+		$newHTML.find('a:empty, button:empty').remove();
 
         $(target).html($newHTML);
 
@@ -2983,95 +3316,68 @@ class JournalManager{
 			}
 		}
 	}
-	edit_note(id, statBlock = false){
-		$(`.ui-dialog:not(.resize_drag_window) div.note[data-id='${id}']`)?.dialog("close");
-		$(`.resize_drag_window[id="${id}"]`).remove();
-		this.close_all_notes();
-		let self=this;
-		
-		let note=$("<div class='note'></div>");
-		let form=$("<form></form>");
-		let tmp=uuid();
-		let ta=$("<textarea id='"+tmp+"' name='ajax_text' class='j-wysiwyg-editor text-editor' data-note-id='"+id+"'></textarea>");
-		ta.css('width','100%');
-		ta.css('height','100%');
-		form.append(ta);
-		
-		note.append(form);
-		
-		if(self.notes[id]){
-			ta.text(self.notes[id].text);
-		}
-		
-		note.attr('title',self.notes[id].title);
-		
-		$("#site-main").append(note);
-		note.dialog({
-			draggable: true,
-			width: 900,
-			height: 600,
-			position: {
-			   my: "center",
-			   at: "center-200",
-			   of: window
-			},
-			open: function(event, ui){
-				let btn_view=$(`<button class='journal-view-button journal-button'><img height="10" src="${window.EXTENSION_PATH}assets/icons/view.svg"></button>"`);
-				$(this).siblings('.ui-dialog-titlebar').prepend(btn_view);
-				btn_view.click(function(){	
-					self.close_all_notes();
-					self.display_note(id, statBlock);
-				});
-			},
-			close: function( event, ui ) {
-				// console.log(event);
-				let taid=$(event.target).find("textarea").attr('id');
-				tinyMCE.get(taid).execCommand('mceSave');
-				$(this).remove();
-			}
-		});
-
-		$("[role='dialog']").draggable({
-			containment: "#windowContainment",
-			start: function () {
-				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
-			},
-			stop: function () {
-				$('.iframeResizeCover').remove();			
-			}
-		});
-		$("[role='dialog']").resizable({
-			start: function () {
-				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
-			},
-			stop: function () {
-				$('.iframeResizeCover').remove();			
-			}
-		});
-		frame_z_index_when_click(note.parent(), true);
-		
-		const debounceNoteSave = mydebounce(function(e, editor){
-		    if(editor.isDirty()){
-				let parser = new DOMParser()
-				let html = parser.parseFromString(editor.getContent(), 'text/html');
-				const body = $(html).find('body')// we do this to get rid of style tags used in templates that aren't needed to be stored - it was causing notes to be too large from message size limits
-				const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]');
-				avttImages.attr('src', '');
-				avttImages.attr('href', '');
-				self.notes[id].text = body.html(); 
-		    	self.notes[id].plain = editor.getContent({ format: 'text' });
-		    	self.notes[id].statBlock = statBlock;
-		    	self.persist();
-		    }
-		}, 800)
-
-		const contentStyles = `
+	content_styles() {
+		return `
 			:root {
 				 --theme-page-fg-color: #242527;
 			}
 			/* END - Default text color */
 			*{
 				 font-family: Roboto, Helvetica, sans-serif;
+			}
+			body .tooltip-hover, body .tooltip-hover:hover, body .tooltip-hover:focus, body .tooltip-hover:active, body .tooltip-hover:visited{
+				color: var(--compendium-action-tooltip,var(--compendium-default-tooltip,#11884c))!important;
+				text-decoration: none;
+			}
+			body .tooltip-hover, body .tooltip-hover:hover, body .tooltip-hover:focus, body .tooltip-hover:active, body .tooltip-hover:visited{
+				color: var(--compendium-action-tooltip,var(--compendium-default-tooltip,#11884c)) !important
+			}
+			body .tooltip-hover.action-tooltip {
+				color: var(--compendium-action-tooltip,var(--compendium-default-tooltip,#11884c)) !important
+			}
+
+			body .tooltip-hover.condition-tooltip {
+				color: var(--compendium-condition-tooltip,var(--compendium-default-tooltip,#5a8100)) !important
+			}
+
+			body .tooltip-hover.item-tooltip {
+				color: var(--compendium-item-tooltip,#774521) !important
+			}
+
+			body .tooltip-hover.lore-tooltip {
+				color: var(--compendium-lore-tooltip,#a83e3e) !important
+			}
+
+			body .tooltip-hover.monster-tooltip {
+				color: var(--compendium-monster-tooltip,#bc0f0f) !important
+			}
+
+			body .tooltip-hover.magic-item-tooltip {
+				color: var(--compendium-magic-item-tooltip,#0f5cbc) !important
+			}
+
+			body .tooltip-hover.rule-tooltip {
+				color: var(--compendium-rule-tooltip,#9b740b) !important
+			}
+
+			body .tooltip-hover.sense-tooltip {
+				color: var(--compendium-sense-tooltip,var(--compendium-default-tooltip,#a41b96)) !important
+			}
+
+			body .tooltip-hover.spell-tooltip {
+				color: var(--compendium-spell-tooltip,#704cd9) !important
+			}
+
+			body .tooltip-hover.skill-tooltip {
+				color: var(--compendium-skill-tooltip,var(--compendium-default-tooltip,#11884c)) !important
+			}
+
+			body .tooltip-hover.weapon-properties-tooltip {
+				color: var(--compendium-wprop-tooltip,var(--compendium-default-tooltip,#11884c)) !important
+			}
+
+			body .tooltip-hover.vehicle-tooltip {
+				color: var(--compendium-vehicle-tooltip,#1b9af0) !important
 			}
 			.abovevtt-mon-stat-block__separator{
 				 max-width: 100%;
@@ -3137,6 +3443,9 @@ class JournalManager{
 			}
 			.journal-site-embed{
 			    border: 1px dotted #5656bb;
+			}
+			.journal-ddb-section-embed{
+			    border: 1px dashed #ff0000;
 			}
 			@media(min-width: 768px) {
 				 .Basic-Text-Frame-2 {
@@ -3844,6 +4153,413 @@ class JournalManager{
 			.ddbc-creature-block:after {
 			    bottom: -3px
 			}
+			.dnd-sheet {
+				font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+				color: var(--pc-template-text-color, #111);
+				background-color: var(--pc-template-sheet-bg, #fff);
+				width: 100%;
+				margin: 0 auto;
+				box-sizing: border-box;
+				font-size: 11px;
+				line-height: 1.2;
+
+				svg.ritual-icon-svg {
+					width: 10px;
+					height: auto;
+					margin-left:3px;
+					vertical-align:middle;
+				}
+				.dnd-page {
+					border: 2px solid var(--pc-template-border-color, #222);
+					padding: 15px;
+					margin-bottom: 30px;
+					background: var(--pc-template-sheet-bg, #fff);
+					page-break-after: always;
+					box-sizing: border-box;
+				}
+				.header-box {
+					border: 2px solid var(--pc-template-border-color, #222);
+					padding: 8px;
+					margin-bottom: 10px;
+					display: flex;
+					gap: 8px;
+					background: var(--pc-template-header-bg, #fff);
+					box-sizing: border-box;
+				}
+				.header-box .col {
+					flex: 1;
+					display: flex;
+					flex-direction: column;
+					justify-content: flex-end;
+					box-sizing: border-box;
+				}
+				.header-box .char-name-box {
+					flex: 2;
+				}
+				.box-field {
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					min-height: 24px;
+					height: auto;
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+					color: var(--pc-template-text-color, #111);
+				}
+				.label {
+					font-size: 8px;
+					text-transform: uppercase;
+					color: var(--pc-template-text-muted, #444);
+					text-align: center;
+					display: block;
+					margin-top: 2px;
+					font-weight: bold;
+				}
+				.main-container {
+					display: flex;
+					gap: 10px;
+					box-sizing: border-box;
+				}
+				.left-column {
+					width: 190px;
+					display: flex;
+					flex-direction: column;
+					gap: 10px;
+					box-sizing: border-box;
+				}
+				.abilities-table-container, .skills-box {
+					border: 1px solid var(--pc-template-border-color, #333);
+					padding: 6px;
+					background: var(--pc-template-sheet-bg, #fff);
+					border-radius: 4px;
+					box-sizing: border-box;
+				}
+				.section-title {
+					font-size: 10px;
+					font-weight: bold;
+					text-align: center;
+					background: var(--pc-template-border-color, #222);
+					color: #fff;
+					padding: 3px;
+					margin-bottom: 6px;
+					border-radius: 2px;
+					text-transform: uppercase;
+					letter-spacing: 0.5px;
+				}
+				.heroic-inspiration{
+					display: flex;
+					align-items: center;
+					justify-content: center;  
+				}
+				.add-table-row{
+					outline: none;
+					margin-top: 0;
+					margin-bottom: 0;
+					display: block;
+					width: 100%;
+					text-align: center;
+					border: none;
+					background: none;
+					color: var(--pc-template-text-color, #999999);
+					font-weight: 800;
+					font-size: 16px;
+					line-height: 18px;
+				}
+				.note-text .ui-sortable-placeholder {
+					visibility: visible !important;
+					background: rgba(0, 0, 0, 0.08);
+				}
+				.note-text .table-row-drag-handle {
+					width: 24px;
+					min-width: 24px;
+					padding: 0 6px;
+					cursor: grab;
+					color: var(--pc-template-text-muted, #888);
+					user-select: none;
+					text-align: center;
+					font-size: 12px;
+					line-height: 1;
+				}
+				.note-text .table-row-drag-handle:active {
+					cursor: grabbing;
+				}
+				table {
+					width: 100%;
+					border-collapse: collapse;
+					text-align: center;
+					font-size: 11px;
+				}
+				th {
+					padding: 2px;
+				}
+				thead tr {
+					border-bottom: 1px solid var(--pc-template-border-light, #222);
+					font-size: 8px;
+					text-transform: uppercase;
+					color: var(--pc-template-text-muted, #444);
+				}
+				thead th:is(:first-child, .table-row-drag-handle+:nth-child(2)) {
+					text-align: left;
+				}
+				tbody tr {
+					border-bottom: 1px solid var(--pc-template-table-stripe, #eee);
+					height: 25px;
+				}
+				tbody tr td {
+					padding: 3px 2px;
+					vertical-align: middle;
+				}
+				tbody tr td:is(:first-child, .table-row-drag-handle+:nth-child(2)){
+					text-align: left;
+				}
+
+				.ability-score-field {
+					display: inline-block;
+					width: 22px;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 2px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					min-height: 14px;
+					border-radius: 2px;
+					box-sizing: border-box;
+					color: var(--pc-template-text-color, #111);
+				}
+				.skill-row {
+					display: flex;
+					align-items: center;
+					font-size: 9.5px;
+					margin-bottom: 3px;
+					gap: 4px;
+				}
+				.skill-row input {
+					margin: 0;
+				}
+				.mod-bullet {
+					min-width: 24px;
+					height: 24px;
+					border: 1px solid var(--pc-template-border-color, #444);
+					text-align: center;
+					font-size: 11px;
+					line-height: 24px;
+					background: var(--pc-template-header-bg, #f4f4f4);
+					color: var(--pc-template-text-color, #111);
+				}
+				.skill-row span {
+					color: var(--pc-template-text-muted, #777);
+					font-size: 8px;
+				}
+				.mid-column {
+					flex: 1;
+					display: flex;
+					flex-direction: column;
+					gap: 10px;
+					box-sizing: border-box;
+				}
+				.combat-stats-grid {
+					display: flex;
+					gap: 6px;
+					text-align: center;
+					box-sizing: border-box;
+				}
+				.combat-metric {
+					border: 2px solid var(--pc-template-border-light, #333);
+					padding: 6px;
+					flex: 1;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 4px;
+					box-sizing: border-box;
+				}
+				.metric-val {
+					font-size: 16px;
+					font-weight: bold;
+					margin-top: 4px;
+				}
+				.hp-box {
+					border: 1px solid var(--pc-template-border-light, #333);
+					padding: 6px;
+					border-radius: 4px;
+					box-sizing: border-box;
+				}
+				.hp-row {
+					display: flex;
+					gap: 6px;
+					margin-bottom: 6px;
+					box-sizing: border-box;
+				}
+				.hp-row .col {
+					flex: 1;
+					box-sizing: border-box;
+				}
+				.hp-subgrid {
+					display: flex;
+					gap: 4px;
+					box-sizing: border-box;
+				}
+				.hp-subgrid > div {
+					flex: 1;
+					box-sizing: border-box;
+				}
+				.container-block {
+					border: 1px solid var(--pc-template-border-light, #333);
+					padding: 6px;
+					border-radius: 4px;
+					min-height: 110px;
+					height: auto;
+					background: var(--pc-template-sheet-bg, #fff);
+					box-sizing: border-box;
+				}
+				.container-block.flex-1 {
+					flex: 1;
+				}
+				.attacks-field {
+					min-height: 120px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+					color: var(--pc-template-text-color, #111);
+				}
+				.notes-field {
+					min-height: 350px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+					color: var(--pc-template-text-color, #111);
+				}
+				.features-field {
+					min-height: 180px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+					color: var(--pc-template-text-color, #111);
+				}
+				.equipment-field {
+					min-height: 139px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+					color: var(--pc-template-text-color, #111);
+				}
+				.page2-grid {
+					display: flex;
+					gap: 10px;
+					box-sizing: border-box;
+				}
+				.page2-grid > .col {
+					flex: 1;
+					box-sizing: border-box;
+				}
+				.bio-block,
+				.notes-block {
+					border: 1px solid var(--pc-template-border-light, #333);
+					padding: 6px;
+					border-radius: 4px;
+					margin-bottom: 8px;
+					background: var(--pc-template-sheet-bg, #fff);
+					box-sizing: border-box;
+				}
+				.bio-appearance { min-height: 90px; height: auto; border: 1px solid var(--pc-template-border-color, #444); padding: 4px; background: var(--pc-template-box-bg, var(--pc-template-box-bg, #fdfdfd)); border-radius: 3px; box-sizing: border-box; overflow-wrap: break-word; color: var(--pc-template-text-color, #111);}
+				.bio-backstory { min-height: 140px; height: auto; border: 1px solid var(--pc-template-border-color, #444); padding: 4px; background: var(--pc-template-box-bg, #fdfdfd); border-radius: 3px; box-sizing: border-box; overflow-wrap: break-word; color: var(--pc-template-text-color, #111);}
+				.bio-allies { min-height: 90px; height: auto; border: 1px solid var(--pc-template-border-color, #444); padding: 4px; background: var(--pc-template-box-bg, #fdfdfd); border-radius: 3px; box-sizing: border-box; overflow-wrap: break-word; color: var(--pc-template-text-color, #111);}
+				.bio-traits-add { min-height: 100px; height: auto; border: 1px solid var(--pc-template-border-color, #444); padding: 4px; background: var(--pc-template-box-bg, #fdfdfd); border-radius: 3px; box-sizing: border-box; overflow-wrap: break-word; color: var(--pc-template-text-color, #111);}
+				.traits-grid {
+					display: grid;
+					grid-template-columns: 1fr 1fr;
+					gap: 8px;
+					box-sizing: border-box;
+				}
+				.trait-box-field {
+					min-height: 60px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, var(--pc-template-border-color, #444));
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+				}
+				.attunement-content {
+					font-size: 11px;
+					margin-top: 4px;
+					box-sizing: border-box;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					overflow-wrap: break-word;
+				}
+				.attunement-content > div {
+					margin-bottom: 2px;
+				}
+				.currency-container {
+					display: flex;
+					justify-content: space-between;
+					margin-bottom: 6px;
+					margin-top: 4px;
+					box-sizing: border-box;
+				}
+				.coin-slot {
+					display: flex;
+					align-items: center;
+					gap: 4px;
+					font-size: 11px;
+					font-weight: bold;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 2px 4px;
+					border-radius: 3px;
+					background: var(--pc-template-header-bg, #f9f9f9);
+					box-sizing: border-box;
+				}
+				.coin-input {
+					width: 40px;
+					min-height: 24px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #ccc);
+					background: var(--pc-template-box-bg, transparent);
+					color: var(--pc-template-text-color, #111);
+					text-align: right;
+					display: inline-block;
+					line-height: 24px;
+				}
+				.treasure-field {
+					min-height: 80px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+				}
+				.spellcasting-field {
+					min-height: 120px;
+					height: auto;
+					border: 1px solid var(--pc-template-border-color, #444);
+					padding: 4px;
+					background: var(--pc-template-box-bg, #fdfdfd);
+					border-radius: 3px;
+					box-sizing: border-box;
+					overflow-wrap: break-word;
+				}
+
+			}
 			@font-face {
 			  font-family: "Tiamat Condensed SC Regular";
 			  src: url("https://www.dndbeyond.com/fonts/tiamatcondensedsc-regular-webfont.woff2") format("woff2");
@@ -3925,6 +4641,90 @@ class JournalManager{
 			
 			/***** END NEW STAT BLOCKS ****/
 		`
+	}
+	edit_note(id, statBlock = false){
+		$(`.ui-dialog:not(.resize_drag_window) div.note[data-id='${id}']`)?.dialog("close");
+		$(`.resize_drag_window[id="${id}"]`).remove();
+		this.close_all_notes();
+		let self=this;
+		
+		let note=$("<div class='note'></div>");
+		let form=$("<form></form>");
+		let tmp=uuid();
+		let ta=$("<textarea id='"+tmp+"' name='ajax_text' class='j-wysiwyg-editor text-editor' data-note-id='"+id+"'></textarea>");
+		ta.css('width','100%');
+		ta.css('height','100%');
+		form.append(ta);
+		
+		note.append(form);
+		
+		if(self.notes[id]){
+			ta.text(self.notes[id].text);
+		}
+		
+		note.attr('title',self.notes[id].title);
+		
+		$("#site-main").append(note);
+		note.dialog({
+			draggable: true,
+			width: 900,
+			height: 600,
+			position: {
+			   my: "center",
+			   at: "center-200",
+			   of: window
+			},
+			open: function(event, ui){
+				let btn_view=$(`<button class='journal-view-button journal-button'><img height="10" src="${window.EXTENSION_PATH}assets/icons/view.svg"></button>"`);
+				$(this).siblings('.ui-dialog-titlebar').prepend(btn_view);
+				btn_view.click(function(){	
+					self.close_all_notes();
+					self.display_note(id, statBlock);
+				});
+			},
+			close: function( event, ui ) {
+				// console.log(event);
+				let taid=$(event.target).find("textarea").attr('id');
+				tinyMCE.get(taid).execCommand('mceSave');
+				$(this).remove();
+			}
+		});
+
+		$("[role='dialog']").draggable({
+			containment: "#windowContainment",
+			start: function () {
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
+			},
+			stop: function () {
+				$('.iframeResizeCover').remove();			
+			}
+		});
+		$("[role='dialog']").resizable({
+			start: function () {
+				$("#resizeDragMon, .note:has(iframe) form .mce-container-body, #sheet").append($('<div class="iframeResizeCover"></div>'));
+			},
+			stop: function () {
+				$('.iframeResizeCover').remove();			
+			}
+		});
+		frame_z_index_when_click(note.parent(), true);
+		
+		const debounceNoteSave = mydebounce(function(e, editor){
+		    if(editor.isDirty()){
+				let parser = new DOMParser()
+				let html = parser.parseFromString(editor.getContent(), 'text/html');
+				const body = $(html).find('body')// we do this to get rid of style tags used in templates that aren't needed to be stored - it was causing notes to be too large from message size limits
+				const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]');
+				avttImages.attr('src', '');
+				avttImages.attr('href', '');
+				self.notes[id].text = basic_sanitize_html(body.html()); 
+		    	self.notes[id].plain = editor.getContent({ format: 'text' });
+		    	self.notes[id].statBlock = statBlock;
+		    	self.persist();
+		    }
+		}, 800)
+
+		const contentStyles = this.content_styles()
 
 		tinyMCE.init({
 			selector: '#' + tmp,
@@ -3951,8 +4751,9 @@ class JournalManager{
 				  { title: 'DM Screen Chunk - won\'t be auto split into columns when used with the DM Screen', block: 'div', wrapper: true, classes: 'dmScreenChunk' },
 				  { title: 'Add Ability Tracker; Format: "Wild Shape 2"', inline: 'span', wrapper:true, classes: 'note-tracker'},
 			      { title: 'Ignore AboveVTT auto formating', inline: 'span', wrapper: true, classes: 'ignore-abovevtt-formating' },
-			      { title: 'Embed Site in Journal', inline: 'span', wrapper: true, classes: 'journal-site-embed'}
-			    ] },
+			      { title: 'Embed Site in Journal', inline: 'span', wrapper: true, classes: 'journal-site-embed'},
+				  { title: 'Embed DDB Section Directly in Note', inline: 'span', wrapper: true, classes: 'journal-ddb-section-embed'}
+				] },
 			    { title: 'Custom Statblock Stats', items: [
 			      { title: 'AC', inline: 'b', classes: 'custom-ac custom-stat'},
 			      { title: 'Average HP', inline: 'b',classes: 'custom-avghp custom-stat' },
@@ -4112,6 +4913,661 @@ class JournalManager{
 <p>4th level (3 slots): greater invisibility, ice storm</p>
 <p>5th level (1 slot): cone of cold</p>`
 			    },
+				{
+					"title": "Fillable Character Sheet",
+					"description": "Adds a fillable character sheet to the note. Has limited edit capabilites for Players.",
+					"content": `
+					<style id='contentStyles'>${contentStyles}</style>
+					<div class="dnd-sheet">
+						<div class="dnd-page">
+							<div class="header-box">
+								<div class="col char-name-box">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">Character Name</span>
+								</div>
+								<div class="col">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">Class &amp; Level</span>
+								</div>
+								<div class="col">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">Background</span>
+								</div>
+								<div class="col">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">Species (Race)</span>
+								</div>
+								<div class="col">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">Alignment</span>
+								</div>
+								<div class="col">
+									<div class="box-field" contenteditable="true">&nbsp;</div>
+									<span class="label">XP</span>
+								</div>
+							</div>
+							<div class="main-container">
+								<div class="left-column">
+									<div class="abilities-table-container">
+										<div class="section-title"><span class="ignore-abovevtt-formating">Heroic Inspiration</span></div>
+										<div class="box-field heroic-inspiration"><input id="template-heroic-inspiration" type="checkbox" />
+										</div>
+									</div>
+									<div class="abilities-table-container">
+										<div class="section-title">Abilities</div>
+										<div class="box-field">
+											<table contenteditable="true">
+												<thead>
+													<tr>
+														<th>Ability</th>
+														<th>Mod</th>
+														<th>Save</th>
+														<th>Score</th>
+													</tr>
+												</thead>
+												<tbody>
+													<tr>
+														<td>Str</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+													<tr>
+														<td>Dex</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+													<tr>
+														<td>Con</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+													<tr>
+														<td>Int</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+													<tr>
+														<td>Wis</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+													<tr>
+														<td>Cha</td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span contenteditable="true">+0</span></td>
+														<td><span class="box-field ability-score-field" contenteditable="true">10</span>
+														</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+									<div class="skills-box">
+										<div class="section-title">Skills</div>
+										<div class="box-field">
+											<table contenteditable="true">
+												<tbody>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Acrobatics</td>
+														<td>Dex</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Animal Handling</td>
+														<td>Wis</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Arcana</td>
+														<td>Int</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Athletics</td>
+														<td>Str</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Deception</td>
+														<td>Cha</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>History</td>
+														<td>Int</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Insight</td>
+														<td>Wis</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Intimidation</td>
+														<td>Cha</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Investigation</td>
+														<td>Int</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Medicine</td>
+														<td>Wis</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Nature</td>
+														<td>Int</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Perception</td>
+														<td>Wis</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Performance</td>
+														<td>Cha</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Persuasion</td>
+														<td>Cha</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Religion</td>
+														<td>Int</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Sleight of Hand</td>
+														<td>Dex</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Stealth</td>
+														<td>Dex</td>
+													</tr>
+													<tr>
+														<td><input type="checkbox" /></td>
+														<td>+0</td>
+														<td>Survival</td>
+														<td>Wis</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+								</div>
+								<div class="mid-column">
+									<div class="combat-stats-grid">
+										<div class="combat-metric"><span class="label">Armor Class</span>
+											<div class="metric-val" contenteditable="true"><strong class="custom-ac custom-stat">16</strong>
+											</div>
+										</div>
+										<div class="combat-metric"><span class="label">Initiative</span>
+											<div class="metric-val"><strong class="custom-initiative custom-stat"
+													contenteditable="true">+1</strong></div>
+										</div>
+										<div class="combat-metric"><span class="label">Speed</span>
+											<div class="metric-val" contenteditable="true">30 ft.</div>
+										</div>
+										<div class="combat-metric"><span class="label">Proficiency Bonus</span>
+											<div class="metric-val" contenteditable="true">+2</div>
+										</div>
+									</div>
+									<div class="hp-box">
+										<div class="hp-row">
+											<div class="col"><span class="label">Maximum Hit Points</span>
+												<div class="box-field" contenteditable="true"><strong class="custom-avghp custom-stat">
+														10</strong></div>
+											</div>
+											<div class="col"><span class="label">Current Hit Points</span>
+												<div class="box-field" contenteditable="true">&nbsp;</div>
+											</div>
+										</div>
+										<div class="hp-row">
+											<div class="col"><span class="label">Temporary Hit Points</a></span>
+												<div class="box-field" contenteditable="true">&nbsp;</div>
+											</div>
+											<div class="col">
+												<div class="hp-subgrid">
+													<div><span class="label">Hit Dice</span>
+														<div class="box-field" contenteditable="true"><input type="checkbox" /> 1d10</div>
+													</div>
+													<div><span class="label">Death Saves</span>
+														<div class="box-field" contenteditable="true">&nbsp;</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+									<div class="container-block">
+										<div class="section-title">Attacks &amp; Spellcasting</div>
+										<div class="attacks-field"><br />
+											<table contenteditable="true">
+												<thead>
+													<tr>
+														<th>Weapon/ability</th>
+														<th>Attack/Save</th>
+														<th>Damage</th>
+														<th>Notes</th>
+													</tr>
+												</thead>
+												<tbody>
+													<tr>
+														<td contenteditable="true">[magicItem]Dagger of Venom[/magicItem]</td>
+														<td contenteditable="true">+1</td>
+														<td contenteditable="true">1d4+1 piercing</td>
+														<td contenteditable="true">DC15 Con (2d10) Poison , [wprop]Nick[/wprop]</td>
+													</tr>
+													<tr>
+														<td contenteditable="true">Handaxe</td>
+														<td contenteditable="true">+0</td>
+														<td contenteditable="true">(1d6) slashing</td>
+														<td contenteditable="true">[wprop]Light[/wprop], [wprop]Thrown[/wprop](20/60)</td>
+													</tr>
+													<tr>
+														<td contenteditable="true">[spell]Acid Splash[/spell]</td>
+														<td contenteditable="true">10 DEX</td>
+														<td contenteditable="true">(1d6) acid</td>
+														<td contenteditable="true">5-foot-radius Sphere</td>
+													</tr>
+													<tr>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+													</tr>
+													<tr>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+													</tr>
+													<tr>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+														<td contenteditable="true">&nbsp;</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+									<div class="bio-block">
+										<div class="section-title">Spellcasting Notes / Summary</div>
+										<div class="spellcasting-field" contenteditable="true">Spellcasting. Spell save DC 10, +0 to hit
+											with spell attacks<br /> <br />Cantrips (at will): acid splash, light, mage hand,
+											prestidigitation<br /><br />1st level (2 slots): detect magic, mage armor<br />
+											<p>&nbsp;</p>
+										</div>
+									</div>
+									<div class="container-block">
+										<div class="section-title">Features &amp; Traits</div>
+										<div class="features-field" contenteditable="true">
+											<table>
+												<tbody class="ui-sortable">
+													<tr class="">
+														<td>[track]Rage 2[/track]</td>
+														<td>Str attack damage +2</td>
+													</tr>
+													<tr class="">
+														<td>Savage Attacker</td>
+														<td>Reroll weapon damage dice once per turn</td>
+													</tr>
+													<tr class="">
+														<td>Darkvision 60ft.</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr class="">
+														<td>&nbsp;Wild Shape</td>
+														<td>&nbsp;<input type="checkbox" /><input type="checkbox" />&nbsp;/ Long Rest (1
+															Recharge on Short Rest)</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="dnd-page">
+							<div class="page2-grid">
+								<div class="col">
+									<div class="bio-block">
+										<div class="section-title">Magic Item Attunement (3 Slots Available)</div>
+										<div class="attunement-content" contenteditable="true">
+											<div style="margin-bottom: 2px;"><input checked="checked"
+													type="checkbox" />&nbsp;[magicItem]Cloak of Protection[/magicItem]</div>
+											<div style="margin-bottom: 2px;"><input type="checkbox" /> Empty Slot</div>
+											<div><input type="checkbox" /> Empty Slot</div>
+										</div>
+									</div>
+									<div class="bio-block">
+										<div class="section-title">Additional Features &amp; Traits</div>
+										<div class="bio-traits-add" contenteditable="true"><strong>Armor</strong>
+											<div>&bull; Light Armor</div>
+											<div><strong>Weapons</strong></div>
+											<div>&bull; Simple Weapons</div>
+											<div><strong>Tools</strong></div>
+											<div>&bull; Herbalism Kit</div>
+											<div><strong>Languages</strong></div>
+											<div>&bull; Common</div>
+										</div>
+									</div>
+									<div class="bio-block">
+										<div class="section-title">Character Appearance</div>
+										<div class="bio-appearance" contenteditable="true">&nbsp;</div>
+									</div>
+									<div class="bio-block">
+										<div class="section-title">Character Backstory</div>
+										<div class="bio-backstory" contenteditable="true">&nbsp;</div>
+									</div>
+									<div class="traits-grid">
+										<div class="bio-block">
+											<div class="section-title">Personality Traits</div>
+											<div class="trait-box-field" contenteditable="true">&nbsp;</div>
+										</div>
+										<div class="bio-block">
+											<div class="section-title">Ideals</div>
+											<div class="trait-box-field" contenteditable="true">&nbsp;</div>
+										</div>
+										<div class="bio-block">
+											<div class="section-title">Bonds</div>
+											<div class="trait-box-field" contenteditable="true">&nbsp;</div>
+										</div>
+										<div class="bio-block">
+											<div class="section-title">Flaws</div>
+											<div class="trait-box-field" contenteditable="true">&nbsp;</div>
+										</div>
+									</div>
+									<div class="bio-block">
+										<div class="section-title">Organization &amp; Allies</div>
+										<div class="bio-allies" contenteditable="true">&nbsp;</div>
+									</div>
+								</div>
+								<div class="col">
+									<div class="bio-block">
+										<div class="section-title">Treasure &amp; Currency</div>
+										<div class="currency-container">
+											<div class="coin-slot">CP:
+												<div class="coin-input" contenteditable="true">&nbsp;</div>
+											</div>
+											<div class="coin-slot">SP:
+												<div class="coin-input" contenteditable="true">&nbsp;</div>
+											</div>
+											<div class="coin-slot">EP:
+												<div class="coin-input" contenteditable="true">&nbsp;</div>
+											</div>
+											<div class="coin-slot">GP:
+												<div class="coin-input" contenteditable="true">&nbsp;</div>
+											</div>
+											<div class="coin-slot">PP:
+												<div class="coin-input" contenteditable="true">&nbsp;</div>
+											</div>
+										</div>
+										<div class="treasure-field" contenteditable="true">&nbsp;</div>
+									</div>
+									<div class="container-block">
+										<div class="section-title">Equipment</div>
+										<div class="equipment-field" contenteditable="true">
+											<table>
+												<thead>
+													<tr>
+														<th>Name</th>
+														<th>Weight</th>
+														<th>QTY</th>
+														<th>Cost (GP)</th>
+														<th>Notes</th>
+													</tr>
+												</thead>
+												<tbody>
+													<tr>
+														<td>[magicItem]Cloak of Protection[/magicItem]</td>
+														<td>&nbsp;</td>
+														<td>1</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>[magicItem]Dagger of Venom[/magicItem]</td>
+														<td>1 lbs</td>
+														<td>1</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>[item]Rope[/item]</td>
+														<td>5 lbs</td>
+														<td>50 ft</td>
+														<td>1</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;[track][item]Arrows[/item] 20[/track]</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;[track][item]Rations[/item] 10[/track]&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+													<tr>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+														<td>&nbsp;</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="dnd-page">
+							<div class="col">
+								<div class="notes-block">
+									<div class="section-title">Notes</div>
+									<div class="notes-field" contenteditable="true">&nbsp;</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					`
+				},
 				{
 					"title": "Treasure / Loot Table",
 					"description": "Add a treasure table with buttons to add to party inventory.",
@@ -4326,7 +5782,7 @@ class JournalManager{
 											} else if (fileType === avttFilePickerTypes.AUDIO) {
 												tinymce.activeEditor.insertContent(`<audio controls src="${link}"></audio>`);
 											} else {
-												tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link}'
+												tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link.replace(/'/g, '%27')}'
 												allowfullscreen
 												webkitallowfullscreen
 												mozallowfullscreen></iframe>`);
@@ -4429,7 +5885,7 @@ class JournalManager{
 									} else if (fileType === avttFilePickerTypes.AUDIO) {
 										tinymce.activeEditor.insertContent(`<audio controls src="${link}"></audio>`);
 									} else {
-										tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link}'
+										tinymce.activeEditor.insertContent(`<iframe width='100%' height='400' src='${window.EXTENSION_PATH}iframe.html?src=${link.replace(/'/g, '%27')}'
 												allowfullscreen
 												webkitallowfullscreen
 												mozallowfullscreen></iframe>`);
@@ -4475,17 +5931,39 @@ class JournalManager{
 				});
 				editor.on('init', function (e) {
 					const body = $(e.target.contentDocument.body);
-					const backgroundColor = $(':root').css('--background-color'); // support azmoria's dark mode without requiring inverse filters
-					const fontColor = $(':root').css('--font-color');
+					const $root = $(':root');
+					const backgroundColor =  $root.css('--background-color'); // support azmoria's dark mode without requiring inverse filters
+					const fontColor =  $root.css('--font-color');
+
 					if(backgroundColor && fontColor){
 						body.css({
 							background: backgroundColor,
 							color: fontColor,
 							'--font-color': fontColor,
-							'--background-color': backgroundColor
+							'--background-color': backgroundColor,
+							'--pc-template-bg-color': $root.css('--pc-template-bg-color') ?? '',
+							'--pc-template-sheet-bg': $root.css('--pc-template-sheet-bg') ?? '',
+							'--pc-template-text-color': $root.css('--pc-template-text-color') ?? '',
+							'--pc-template-text-muted': $root.css('--pc-template-text-muted') ?? '',
+							'--pc-template-border-color': $root.css('--pc-template-border-color') ?? '',
+							'--pc-template-border-light': $root.css('--pc-template-border-light') ?? '',
+							'--pc-template-box-bg': $root.css('--pc-template-box-bg') ?? '',
+							'--pc-template-header-bg': $root.css('--pc-template-header-bg') ?? '',
+							'--pc-template-table-stripe': $root.css('--pc-template-table-stripe') ?? '',
+							'--pc-template-section-bg': $root.css('--pc-template-section-bg') ?? '',
+							'--pc-template-section-text': $root.css('--pc-template-section-text') ?? ''
 						});
 					}
-
+					editor.getBody().addEventListener('change', function (e) {
+						if (e.target && e.target.nodeName === 'INPUT' && e.target.type === 'checkbox') {				
+							if (e.target.checked) {
+								e.target.setAttribute('checked', 'checked');
+							} else {
+								e.target.removeAttribute('checked');
+							}
+							editor.nodeChanged();
+						}
+					});
 					editor.execCommand('setAvttImageSrc', e);
 				});
 				editor.on('NodeChange', async function (e) {
@@ -4513,8 +5991,9 @@ class JournalManager{
 				        e.element.setAttribute("src", await getGoogleDriveAPILink(url));
 				        return; 
 				    }
+
 				    return;
-				});
+				});					
 				editor.on('change keyup', async function(e){
 					editor.execCommand('setAvttImageSrc', e);
 				});
@@ -4535,7 +6014,7 @@ class JournalManager{
 				const avttImages = body.find('img[data-src*="above-bucket-not-a-url"]');
 				avttImages.attr('src', '');
 				avttImages.attr('href', '');
-				self.notes[note_id].text = body.html(); 
+				self.notes[note_id].text = basic_sanitize_html(body.html()); 
 				self.notes[note_id].plain = tinymce.activeEditor.getContent({ format: 'text' });
 				self.notes[note_id].statBlock = statBlock;
 				self.persist();
@@ -4886,6 +6365,3 @@ function render_source_chapter_in_iframe(url) {
 
 	iframe.attr('src', url);
 }
-
-
-

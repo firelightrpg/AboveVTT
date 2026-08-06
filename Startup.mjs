@@ -37,7 +37,7 @@ $(function() {
         } catch (e) {
           console.warn(`Failed to parse global settings, using defaults`, e);
           localStorage.removeItem(`ExperimentalSettingsGlobal`);
-        }
+        }       
         window.EXPERIMENTAL_SETTINGS = {...campaignSettings, ...globalSettings};
         if (is_release_build()) {
           // in case someone left this on during beta testing, we should not allow it here
@@ -58,6 +58,15 @@ $(function() {
       .then(set_campaign_secret)      // set it to window.CAMPAIGN_SECRET
       .then(store_campaign_info)      // store gameId and campaign secret in localStorage for use on other pages
       .then(async () => {
+        startup_step("Building Spells Cache");
+        DDBApi.fetchSpellsJsonWithToken();
+        startup_step("Building Items Cache")
+        DDBApi.fetchItemsJsonWithToken().then((data)=>{
+          window.ITEMS_CACHE = data;
+        });
+        startup_step("Fetching Party Inventory")
+        DDBApi.debounceGetPartyInventory();
+        startup_step("Fetching Campaign Info")
         const maxRetries = 5
         const baseDelay = 500
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -112,11 +121,6 @@ $(function() {
         addExtensionPathStyles();
         $('body').append(`<script type="text/javascript" src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="h3iaoazdu0wqrfd"></script>`)
       }).then(() => {     
-        DDBApi.fetchItemsJsonWithToken().then(data => {
-          window.ITEMS_CACHE = data;
-        })
-       DDBApi.debounceGetPartyInventory()
-
        
         const lastSendToDefault = localStorage.getItem(`${gameId}-sendToDefault`, gamelog_send_to_text()); 
 
@@ -245,7 +249,15 @@ $(function() {
             }
           }                 
           if(event.data.msgType=='placeAoe' && (event.data.sendTo == window.PLAYER_ID || (window.DM && event.data.sendTo == false)))  {
-              let options = build_aoe_token_options(event.data.data.color, event.data.data.shape, event.data.data.feet / window.CURRENT_SCENE_DATA.fpsq, event.data.data.name, event.data.data.lineWidth / window.CURRENT_SCENE_DATA.fpsq)
+              let shape = sanitize_aoe_shape(event.data.data.shape);
+              let feet = event.data.data.feet;
+              const circleIsSquare = window.top.get_avtt_setting_value('circleIsSquare');
+              if(circleIsSquare && shape == 'circle'){
+                shape = 'square';
+                feet *= 2;
+              }
+
+              let options = build_aoe_token_options(event.data.data.color, shape, feet / window.CURRENT_SCENE_DATA.fpsq, event.data.data.name, event.data.data.lineWidth / window.CURRENT_SCENE_DATA.fpsq)
               if(name == 'Darkness' || name == 'Maddening Darkness' ){
                 options = {
                   ...options,
@@ -658,7 +670,6 @@ async function start_above_vtt_for_spectator() {
     window.startupSceneId = currentSceneData.playerscene;
     window.LOADING = true;
     const activeScene = await AboveApi.getScene(currentSceneData.playerscene);
-    console.log("attempting to handle scene", activeScene);
     startup_step("Loading Scene");
     window.MB.handleScene(activeScene);
     startup_step("Start up complete");
@@ -881,22 +892,22 @@ function inject_dm_roll_default_menu(){
       font-size:14px;
     }
     .mce-btn {
-      margin-right: 3px !important;
+      margin-right: 3px;
     }
     .mce-btn {
-        border: 1px solid #b1b1b1 !important;
-        border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25) rgba(0,0,0,0.25) !important;
-        position: relative !important;
-        text-shadow: 0 1px 1px rgba(255,255,255,0.75) !important;
-        display: inline-block !important;
-        *display: inline !important;
-        *zoom:1;-webkit-border-radius: 3px !important;
-        -moz-border-radius: 3px !important;
-        border-radius: 3px !important;
-        -webkit-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-        -moz-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-        background-color: #f0f0f0 !important;
+        border: 1px solid #b1b1b1;
+        border-color: rgba(0,0,0,0.1) rgba(0,0,0,0.1) rgba(0,0,0,0.25) rgba(0,0,0,0.25);
+        position: relative;
+        text-shadow: 0 1px 1px rgba(255,255,255,0.75);
+        display: inline-block;
+        *display: inline;
+        *zoom:1;-webkit-border-radius: 3px;
+        -moz-border-radius: 3px;
+        border-radius: 3px;
+        -webkit-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05);
+        -moz-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.05);
+        background-color: #f0f0f0;
     }
 
     .mce-i-save:before {
@@ -1176,7 +1187,6 @@ async function start_above_vtt_for_players() {
     window.startupSceneId = currentSceneData.playerscene;
     window.LOADING = true;
     const activeScene = await AboveApi.getScene(currentSceneData.playerscene);
-    console.log("attempting to handle scene", activeScene);
     startup_step("Loading Scene");
     window.MB.handleScene(activeScene);
     startup_step("Start up complete");
@@ -1267,12 +1277,10 @@ async function fetch_sceneList_and_scenes() {
   if (currentSceneData.dmscene && window.ScenesHandler.scenes.find(s => s.id === currentSceneData.dmscene)) {
     window.LOADING = true;
     activeScene = await AboveApi.getScene(currentSceneData.dmscene);
-    console.log("attempting to handle scene", activeScene);
     // window.MB.handleScene(activeScene);
   } else if (window.ScenesHandler.scenes.length > 0) {
     window.LOADING = true;
     activeScene = await AboveApi.getScene(window.ScenesHandler.scenes[0].id);
-    console.log("attempting to handle scene", activeScene);
   }
   if(activeScene)
     window.MB.handleScene(activeScene);

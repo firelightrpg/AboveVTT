@@ -34,7 +34,6 @@ const debounceHandleInjected = mydebounce(() => {
 					window.JOURNAL.add_journal_tooltip_targets(li);
 					add_stat_block_hover(li)
 					add_aoe_statblock_click(li);
-					
 				}
 				let rollType = current.data.injected_data?.rollType?.toLowerCase();
 				let rollAction = current.data.injected_data?.rollTitle?.toLowerCase();
@@ -193,7 +192,7 @@ const debounceHandleInjected = mydebounce(() => {
 							closeOnContentClick: true,
 							callbacks: {
 								elementParse: function (item) {
-									item.src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(item.src)}`;
+									item.src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(item.src).replace(/'/g, '%27')}`;
 								}
 							}
 						});
@@ -242,8 +241,8 @@ const debounceHandleInjected = mydebounce(() => {
 		}
 	}
 }, 500)
-const debounceSendNote = mydebounce(function(id, note){
-	window.MB.sendMessage('custom/myVTT/note',  {note: note, id: id, from:window.PLAYER_ID})
+const debounceSendNote = mydebounce(function(id, note, tokenId){
+	window.MB.sendMessage('custom/myVTT/note',  {note, id, tokenId, from:window.PLAYER_ID})
 }, 2000);
 
 const delayedClear = mydebounce(() => clearFrame());
@@ -1204,6 +1203,8 @@ class MessageBroker {
 				}
 			} else if(msg.eventType=="custom/myVTT/JournalChapters"){
 				if(!window.DM){
+					if(msg.data.override == true) 
+						window.JOURNAL.notes = {};
 					window.JOURNAL.chapters=msg.data.chapters;
 					window.JOURNAL.build_journal();
 					window.JOURNAL.persist(true);
@@ -1232,7 +1233,32 @@ class MessageBroker {
 					}
 				}
 			} else if(msg.eventType=="custom/myVTT/note"){
-				if(!window.DM || (msg.data.from && msg.data.from != window.PLAYER_ID)){
+				let all_collected = true;
+				if(msg.data.lastIndex != 0){
+					if(!window.temp_note_save){
+						window.temp_note_save = {};
+					}
+					const {uuid, order} = msg.data
+					
+					if(!window.temp_note_save[uuid]){
+						window.temp_note_save[uuid] = [];
+					}
+					let temp_note = window.temp_note_save[uuid];
+					temp_note[order] = msg.data.text;
+					all_collected = true;
+					for(let i = 0; i < msg.data.lastIndex; i++){
+						if(temp_note[i] == undefined){
+							all_collected = false;
+							break;
+						}
+					}
+					if(all_collected){
+						msg.data.text = temp_note.join('');
+						delete window.temp_note_save[uuid];
+					}
+				}	
+				msg.data.plain = $(msg.data.text).text();
+				if(all_collected && (!window.DM || (msg.data.from && msg.data.from != window.PLAYER_ID))){
 					if(msg.data.delete == true){
 						delete window.JOURNAL.notes[msg.data.id]
 						window.JOURNAL.build_journal();
@@ -1251,11 +1277,18 @@ class MessageBroker {
 					const openNote = $(`.note[data-id='${msg.data.id}']`);
 					// If the 'Open' button is clicked OR the note is already opened by a player and it is saved 
 					// by the DM, the note gets refreshed.
+					let currScroll = 0;
+					if(openNote.length>0){
+						const targetRescan = openNote.find('.avtt-stat-block-container, .note-text').first();
+						currScroll = targetRescan[0].scrollTop;
+					}
+
 					if (msg.data.popup == true || (msg.data.popup == undefined && openNote.length != 0)){
-						window.JOURNAL.display_note(msg.data.id);
+						window.JOURNAL.display_note(msg.data.id, undefined, currScroll);
 					} else if (msg.data.popup == false) {
 						openNote.remove();
 					}
+					
 					
 
 					if(window.JOURNAL.notes[msg.data.id].abilityTracker && openNote.length>0){
@@ -1273,6 +1306,12 @@ class MessageBroker {
 						}
 					}
 
+					const openStatBlock = $(`.custom-stat-block[data-stat-id="${msg.data.id}"]`)
+					if(openStatBlock.length > 0 && window.JOURNAL.notes[msg.data.id] != undefined){
+						currScroll = openStatBlock[0].scrollTop;
+						const container = await load_monster_stat(msg.data.id, msg.data.tokenId, window.JOURNAL.notes[msg.data.id].text);
+						container.find('.avtt-stat-block-container, .note-text').first()[0].scrollTop = currScroll;
+					}
 					window.JOURNAL.persist(true);
 
 				}
@@ -1680,8 +1719,7 @@ class MessageBroker {
 		}
 	}
 	async handleScene (msg, forceRefresh=false) {
-		
-		console.debug("handlescene", msg);
+		console.log("handleScene", msg);
 		window.LOADING = true;
 		window.MB.checkHideSceneFromPlayers();
 		if(window.WIZARDING){
@@ -1772,14 +1810,14 @@ class MessageBroker {
 				window.videoTokenOld = {};
 				let data = msg.data;
 				let self=this;
-
+				let loadMap = "";
 				if(data.dm_map_usable=="1"){ // IN THE CLOUD WE DON'T RECEIVE WIDTH AND HEIGT. ALWAYS LOAD THE DM_MAP FIRST, AS TO GET THE PROPER WIDTH
-					data.map=data.dm_map;
+					loadMap=data.dm_map;
 					if(data.dm_map_is_video=="1" || data.dm_map?.includes('youtube.com') || data.dm_map?.includes("youtu.be"))
 						data.is_video=true;
 				}
 				else{
-					data.map=data.player_map;
+					loadMap=data.player_map;
 					if(data.player_map_is_video=="1")
 						data.is_video=true;
 				}
@@ -1820,28 +1858,28 @@ class MessageBroker {
 					build_import_loading_indicator("Loading UVTT Map");
 					try{
 						if (window.DM && data.dm_map && data.dm_map_usable == '1'){
-							data.map = await get_map_from_uvtt_file(data.map)
+							loadMap = await get_map_from_uvtt_file(loadMap)
 						}
 						else{
-							data.map = await get_map_from_uvtt_file(data.player_map);
+							loadMap = await get_map_from_uvtt_file(data.player_map);
 						}			
 					}
 					catch{
 						console.log('non-UVTT file found for map')
 						if (window.DM && data.dm_map && data.dm_map_usable == '1'){
-							data.map = data.dm_map;
+							loadMap = data.dm_map;
 						}
 						else{
-							data.map = data.player_map;
+							loadMap = data.player_map;
 						}
 					}
 				}
 				else{
 					if (window.DM && data.dm_map && data.dm_map_usable == '1') {
-						data.map = data.dm_map;
+						loadMap = data.dm_map;
 					}
 					else {
-						data.map = data.player_map;
+						loadMap = data.player_map;
 					}
 					await build_import_loading_indicator(`Loading ${window.DM ? data.title : 'Scene'}`);		
 				}
@@ -1868,20 +1906,77 @@ class MessageBroker {
 					if (!window.CURRENT_SCENE_DATA.fpsq || window.CURRENT_SCENE_DATA.fpsq == "" ){
 						window.CURRENT_SCENE_DATA.fpsq = 5;
 					}
-					load_scenemap(data.map, data.is_video, data.width, data.height, data.UVTTFile, async function() {
+					load_scenemap(loadMap, data.is_video, data.width, data.height, data.UVTTFile, async function() {
 						
 						console.group("load_scenemap callback")
 						if(!window.CURRENT_SCENE_DATA.scale_factor)
 							window.CURRENT_SCENE_DATA.scale_factor = 1;
 						let scaleFactor = window.CURRENT_SCENE_DATA.scale_factor;
 						// Store current scene width and height
-						let mapHeight = await $("#scene_map").height();
-						let mapWidth = await $("#scene_map").width();
+						const sceneMap = $('#scene_map');
+						let mapHeight = await sceneMap.height();
+						let mapWidth = await sceneMap.width();
+						if (window.DM && data.dm_map && data.dm_map_usable == '1' && data.player_map && !data.UVTTFile && !data.is_video) {
+							function showMapWarning() {
+								$("#above-vtt-error-message").remove();
+								const container = $(`
+								<div id="above-vtt-error-message">
+									<h2>Warning: Player and DM maps do not align</h2>
+									<div id="error-message-details">
+										<p>Player Map and DM map are not the same size. This mostly occurs with old adventures where VTTs were not taken into consideration.This will cause most things to be out of alignment between player and DM view.</p>	
+										<p>Option 1: Disable the DM map. Use hidden number tokens or text tool to label areas.</p>
+										<p>Option 2: Resize / Align the maps in something like Photoshop/gimp</p>
+										<p>If needed walls can be rescaled by using the 'Edit Points' tool -> ${getModKeyName()}+A to select all points -> ${getShiftKeyName()}+DRAG up/down to rescale the walls to fit.
+										<p>You may want to join as a player/spectator to confirm alignment after adjusting.</p>
+									</div>
+									<div class="error-message-buttons">
+									<button id="close-error-button">Close</button>
+									</div>
+								</div>
+								`);
+								$(document.body).append(container);
+								$("#close-error-button").on("click", () => {
+									removeError();
+								});
+							}
+							let playerMap = new Image();
 
+							function removeEvents(){
+								playerMap.removeEventListener('load', onLoad);
+								playerMap.removeEventListener('error', onError);
+								playerMap = null;
+							}
+
+							function onLoad() {
+								const width = playerMap.naturalWidth;
+								const height = playerMap.naturalHeight;
+								if(width != sceneMap[0].naturalWidth || height != sceneMap[0].naturalHeight)
+									showMapWarning();
+								removeEvents();
+							}
+
+							function onError() {
+								console.warn('Failed to load player comparison map.')
+								removeEvents();
+							}
+
+							playerMap.addEventListener('load', onLoad, { once: true });
+							playerMap.addEventListener('error', onError, { once: true });
+
+							let playerUrl = data.player_map;
+
+							if(playerUrl.startsWith('above-bucket-not-a-url')){
+								playerUrl = await getAvttStorageUrl(playerUrl, true);
+							} else{
+								playerUrl = await getGoogleDriveAPILink(playerUrl)
+							}
+
+							playerMap.src = await parse_img(playerUrl);
+						}
 	
 						window.CURRENT_SCENE_DATA.conversion = 1;
 						
-						if (!data.map?.includes('youtube.com') && (mapHeight > 2500 || mapWidth > 2500)){
+						if (!loadMap?.includes('youtube.com') && (mapHeight > 2500 || mapWidth > 2500)){
 							let conversion = 2;
 							if(mapWidth >= mapHeight){
 								conversion = 1980 / mapWidth;
@@ -2132,9 +2227,12 @@ class MessageBroker {
 
 
 		const isChatEnabled = is_encounters_page() || is_characters_page() || is_campaign_page();
+		const imageUrl = new URL(data.img);
+		const decodedPath = decodeURIComponent(imageUrl.pathname);
+		imageUrl.pathname = encodeURI(decodedPath);
 
 		//Security logic to prevent content being sent which can execute JavaScript.
-		let image = `<img class="${isChatEnabled ? 'tss-1e4a2a1-AvatarPortrait' : 'Avatar_AvatarPortrait__3cq6B'}" src="${encodeURI(data.img)}" alt="">`;
+		let image = `<img class="${isChatEnabled ? 'tss-1e4a2a1-AvatarPortrait' : 'Avatar_AvatarPortrait__3cq6B'}" src="${imageUrl.toString()}" alt="">`;
 		let player = `<span class="tss-1tj70tb-Sender" title="${data.player}">${data.player}</span>`;
 
 		player = DOMPurify.sanitize( player,{ALLOWED_TAGS: ['span']});
@@ -2365,6 +2463,8 @@ class MessageBroker {
 			
 	
 		}
+
+		
 	}
 
 	
@@ -2387,17 +2487,17 @@ class MessageBroker {
 				window.MB.sendMessage("custom/myVTT/soundpad", data); // refresh soundpad
 			}
 			else if(window.MIXER){
-	        const state = window.MIXER.remoteState();
-          console.log('pushing mixer state to players', state);
-          window.MB.sendMessage('custom/myVTT/mixer', state);
-          if (window.YTPLAYER) {
-          		window.YTPLAYER.volume = $("#youtube_volume").val();
-              window.YTPLAYER.setVolume(window.YTPLAYER.volume*$("#master-volume input").val());
-              data={
-                  volume: window.YTPLAYER.volume
-              };
-              window.MB.sendMessage("custom/myVTT/changeyoutube",data);
-          }
+				const state = window.MIXER.remoteState();
+				console.log('pushing mixer state to players', state);
+				window.MB.sendMessage('custom/myVTT/mixer', state);
+				if (window.YTPLAYER) {
+						window.YTPLAYER.volume = $("#youtube_volume").val();
+					window.YTPLAYER.setVolume(window.YTPLAYER.volume*$("#master-volume input").val());
+					data={
+						volume: window.YTPLAYER.volume
+					};
+					window.MB.sendMessage("custom/myVTT/changeyoutube",data);
+				}
 			}
 			window.MB.sendMessage("custom/myVTT/DMAvatar", {
 				avatar: dmAvatarUrl
@@ -2411,14 +2511,14 @@ class MessageBroker {
 	handleAudioPlayingSync(msg){
 		if(window.DM){
 			for(let i = 0; i<$("audio").length; i++){
-		    if($("audio")[i].paused == false){
-		    	let data={
-						channel: i,
-						time: $("audio")[i].currentTime,
-						volume: $("audio")[i].volume,
-					}
-					window.MB.sendMessage("custom/myVTT/playchannel",data);
-		    }
+				if($("audio")[i].paused == false){
+					let data={
+							channel: i,
+							time: $("audio")[i].currentTime,
+							volume: $("audio")[i].volume,
+						}
+						window.MB.sendMessage("custom/myVTT/playchannel",data);
+				}
 			}
 		}
 	}
@@ -2483,7 +2583,29 @@ class MessageBroker {
 		//this.sendDDBMB(eventType,data); 
 
 		if(eventType.startsWith("custom")){
-			this.sendAboveMB(eventType,data,skipSceneId,forceSceneId);
+			if(eventType == "custom/myVTT/note"){
+				const copyData = $.extend(true, {}, data);
+				const msgId = uuid();
+				copyData.note.plain = "";
+				let text = `${copyData.note.text}`;
+				let order = 0;
+				const textLength = JSON.stringify(text).length;
+				const lastIndex = Math.floor(textLength/120000);
+				copyData.lastIndex = lastIndex;
+				copyData.uuid = msgId;
+				while(order<lastIndex){
+					copyData.order = order;
+					let sendNote = text.slice(0, 120000)
+					copyData.note.text = sendNote;
+					this.sendAboveMB('custom/myVTT/note', copyData, skipSceneId, forceSceneId)
+					order+=1;
+					text = text.slice(120000, text.length)
+				}
+				copyData.note.text = text;
+				this.sendAboveMB('custom/myVTT/note', copyData, skipSceneId, forceSceneId)
+			}else{
+				this.sendAboveMB(eventType,data,skipSceneId,forceSceneId);
+			}		
 		}
 		else{
 			this.sendDDBMB(eventType,data);

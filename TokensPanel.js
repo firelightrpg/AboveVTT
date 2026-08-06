@@ -458,7 +458,10 @@ function inject_monster_tokens(searchTerm, skip, addedList=[]) {
     search_monsters(searchTerm, skip, function (monsterSearchResponse) {
         let listItems = addedList;
         let remainderItems = 0;
-
+        const sourceList = {};
+        const sourceCategory = window.ddbConfigJson.sources.map((s) => {
+            sourceList[s.id] = s.sourceCategoryId;
+        });
         for (let i = 0; i < monsterSearchResponse.data.length; i++) {
             if(listItems.length == 10){
                 remainderItems = 100 - i;
@@ -472,10 +475,7 @@ function inject_monster_tokens(searchTerm, skip, addedList=[]) {
 
             
             if(Array.isArray(window.sourceCategoryMonsterFilter) && window.sourceCategoryMonsterFilter.length>0){
-                const sourceList = {};
-                const sourceCategory = window.ddbConfigJson.sources.map((s) => {
-                    sourceList[s.id] = s.sourceCategoryId;
-                });
+
                 const sourceIdMap = item.monsterData.sources.map(s => { return sourceList[s.sourceId] })
                 const set = new Set(window.sourceCategoryMonsterFilter);
                 const hasMatch = sourceIdMap.some(value => set.has(`${value}`) || set.has(value)); 
@@ -647,6 +647,7 @@ function redraw_token_list(searchTerm, enableDraggable = true, leaveEmpty=false)
         // don't do anything on startup
         return;
     }
+   
     console.group("redraw_token_list");
     update_token_folders_remembered_state();
     let list = $(`<div class="custom-token-list"></div>`);
@@ -753,9 +754,9 @@ function get_helper_size(draggedItem){
  * @param html {*|jQuery|HTMLElement} the html that corresponds to an item (like a row in the list of tokens)
  * @param specificImage {string} the url of the image to use. If nothing is provided, an image will be selected at random from the token's specified alternative-images.
  */
-async function enable_draggable_token_creation(html, specificImage = undefined) {
+async function enable_draggable_token_creation(html, specificImage = undefined, highPriority = false) {
     if(specificImage && specificImage.startsWith('above-bucket-not-a-url')){
-        specificImage = await getAvttStorageUrl(avttTokensApplyThumbnailPrefix(specificImage))
+        specificImage = await getAvttStorageUrl(avttTokensApplyThumbnailPrefix(specificImage), highPriority)
     }
     $(document).off('click.clearSelectTokens').on('click.clearSelectTokens', function(e) {
         if(!$(e.target).closest('#tokens-panel').length){
@@ -1217,7 +1218,7 @@ async function create_and_place_token(listItem, hidden = undefined, specificImag
     let options = {...window.TOKEN_SETTINGS}
     // set up whatever you need to. We'll override a few things after
     let foundOptions = find_token_options_for_list_item(listItem);
-    options = {...options, ...foundOptions}; // we may need to put this in specific places within the switch statement below
+    options = $.extend(true, {}, options, foundOptions); // we may need to put this in specific places within the switch statement below
     const chosenImage = random_image_for_item(listItem, specificImage);
     options.imgsrc = chosenImage;
     options.alternativeImages = includeDDBImages(options.alternativeImages, listItem, options);
@@ -1231,11 +1232,13 @@ async function create_and_place_token(listItem, hidden = undefined, specificImag
             'light1': {...options.light1},
             'light2': {...options.light2}
         }
-        options = {
-            ...options,
-            ...options.alternativeImagesCustomizations[options.imgsrc],
-            imgsrc: options.imgsrc
-        }
+        options = $.extend(true, 
+            {}, 
+            options, 
+            options.alternativeImagesCustomizations[options.imgsrc], 
+            {imgsrc: options.imgsrc}
+        ); 
+            
         if(options.vision != undefined && options.vision?.feet == undefined && visionOptions?.vision?.feet != undefined){
             options.vision.feet = visionOptions.vision.feet;
         }
@@ -1325,12 +1328,12 @@ async function create_and_place_token(listItem, hidden = undefined, specificImag
             }
             options.id = listItem.sheet;
             if(window.all_token_objects[options.id] != undefined){           
-                options = {...options, ...window.all_token_objects[options.id].options}
+                options = $.extend(true, {}, options, window.all_token_objects[options.id].options)
                 if (specificImage) { 
-                    options = { ...options, ...options.alternativeImagesCustomizations?.[specificImage], imgsrc: chosenImage };
+                    options = $.extend(true, {}, options, options.alternativeImagesCustomizations?.[specificImage], {imgsrc: chosenImage});
                 }       
                 else if (options.defaultImage !== undefined) {
-                     options = { ...options, ...options.alternativeImagesCustomizations?.[specificImage], imgsrc: chosenImage };
+                     options = $.extend(true, {}, options, options.alternativeImagesCustomizations?.[specificImage], {imgsrc: chosenImage});
                 }
             }
             options.color = color_from_pc_object(pc);
@@ -1760,12 +1763,12 @@ async function create_and_place_token(listItem, hidden = undefined, specificImag
         options.monster = 'customStat'
     }
     
-    options.color = options.color ?? foundOptions.color;
+    options.color = foundOptions.color ?? options.color;
     
 
 
 
-
+    
 
     options.itemType = listItem.type;
     options.itemId = listItem.id;
@@ -1778,10 +1781,7 @@ async function create_and_place_token(listItem, hidden = undefined, specificImag
 
 
     if(extraOptions != undefined){
-        options = {
-            ...options,
-            ...extraOptions
-        }
+        options = $.extend(true, {}, options, extraOptions);
     }
 
 
@@ -1931,7 +1931,7 @@ function search_monsters(searchTerm, skip, callback) {
     window.ajaxQueue.addDDBRequest({
         url: `https://monster-service.dndbeyond.com/v1/Monster?skip=${offset}&take=100${searchParam}`,
         success: function (responseData) {
-            console.log(`search_monsters succeeded`, responseData);
+            console.log(`search_monsters succeeded`);
             callback(responseData);
         },
         failure: function (errorMessage) {
@@ -2602,11 +2602,11 @@ function create_token_inside(listItem, tokenName = "New Token", tokenImage = '',
         customization.tokenOptions.videoToken = true;
     }
     if(options != undefined){
-        customization.tokenOptions = {
-            ...customization.tokenOptions,
-            ...options,
-            alternativeImages: options.alternativeImages?.length > 0 ? options.alternativeImages : options.imgsrc != '' ? [options.imgsrc] : []
-        }
+        customization.tokenOptions = $.extend(true, {}, 
+            customization.tokenOptions,
+            options,
+            {alternativeImages: options.alternativeImages?.length > 0 ? options.alternativeImages : options.imgsrc != '' ? [options.imgsrc] : []}
+        );
     }
 
     if(statBlock != undefined){
@@ -2747,7 +2747,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
     // close any that are already open just to be safe
     let sidebarPanel;
     let name = listItem.name;
-    if(!selectedTokenImage && !redrawPanel){ // we just want to redraw the panel options not the images since we selected a token image to edit
+    if(!selectedTokenImage && !redrawPanel){ 
         close_sidebar_modal();
         sidebarPanel = new SidebarPanel("token-configuration-modal");
         
@@ -2774,10 +2774,10 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
     if(selectedTokenImage){
         if(customization.tokenOptions.alternativeImagesCustomizations == undefined)
             customization.tokenOptions.alternativeImagesCustomizations = {};
-        targetOptions = {
-            ...customization.tokenOptions,
-            ...customization.tokenOptions.alternativeImagesCustomizations[selectedTokenImage]
-        }
+        targetOptions = $.extend(true, {}, 
+            customization.tokenOptions,
+            customization.tokenOptions.alternativeImagesCustomizations[selectedTokenImage]
+        )
     }
 
     let inputWrapper = sidebarPanel.inputWrapper;
@@ -3057,7 +3057,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         customization.setTokenOption('offset.x', offsetX)
         persist_token_customization(customization);
         decorate_modal_images(sidebarPanel, listItem, placedToken);
-    });
+    }, "Adjust the X position of the image. Larger values moves the image right, smaller left.");
     inputWrapper.append(offsetXWrapper);
 
     let startingOffsetY = targetOptions.offset?.y ?? 0;
@@ -3074,7 +3074,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         customization.setTokenOption('offset.y', offsetY)
         persist_token_customization(customization);
         decorate_modal_images(sidebarPanel, listItem, placedToken);
-    });
+    }, "Adjust the Y position of the image. Larger values moves the image up, smaller down.");
     inputWrapper.append(offsetYWrapper);
 
 
@@ -3083,7 +3083,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         customization.setTokenOption("imageZoom", imageZoom);
         persist_token_customization(customization);
         decorate_modal_images(sidebarPanel, listItem, placedToken);  
-    });
+    }, "This will adjust the zoom of the image. Different clipping will happen based on token style.");
     inputWrapper.append(imageZoomWrapper);
 
     let startingTokenFlip = targetOptions.tokenFlip ?? 0;
@@ -3099,7 +3099,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         customization.setTokenOption("imageOpacity", opacity);
         persist_token_customization(customization);
         decorate_modal_images(sidebarPanel, listItem, placedToken);
-    });
+    }, "This will adjust the image opacity. Accepted values between 0 and 1, 0 being fully transparent.");
     inputWrapper.append(opacityWrapper);
 
     let startingHeading = targetOptions.imageHeading ?? 0;
@@ -3107,7 +3107,7 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         customization.setTokenOption("imageHeading", heading);
         persist_token_customization(customization);
         decorate_modal_images(sidebarPanel, listItem, placedToken);
-    });
+    }, "This will adjust the default image direction/rotation. This affects where the 'look here' rotation and arrow key rotation uses as the token facing direction. Default token facing is down.");
     inputWrapper.append(headingWrapper);
 
     // border color
@@ -3527,6 +3527,8 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
     // token options override
     let tokenOptionsButton = build_override_token_options_button(sidebarPanel, listItem, placedToken, targetOptions, function(name, value) {
         customization.setTokenOption(name, value);
+        const selectedTokenImage = $('.example-token.selected .div-token-image').attr('data-src');
+        redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, undefined, selectedTokenImage);
     }, function () {
         let devilsightInput = $("input[name='devilsightColor']").spectrum("get");
         let truesightInput = $("input[name='truesightColor']").spectrum("get");
@@ -3543,7 +3545,8 @@ function display_aoe_token_configuration_modal(listItem, placedToken = undefined
         persist_token_customization(customization);
         redraw_settings_panel_token_examples(customization.tokenOptions);
         const selectedTokenImage = $('.example-token.selected .div-token-image').attr('data-src');
-        redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, undefined, selectedTokenImage);
+        display_token_configuration_modal(listItem, placedToken, selectedTokenImage, sidebarPanel);
+
     });
 
     inputWrapper.append(tokenOptionsButton);
@@ -3615,7 +3618,7 @@ function build_override_token_options_button(sidebarPanel, listItem, placedToken
             let options = find_token_options_for_list_item(listItem);
             const selectedTokenImage = $('.example-token.selected .div-token-image').attr('data-src');
             if(selectedTokenImage)
-                options = {...options, ...options.alternativeImagesCustomizations[selectedTokenImage]}
+                options = $.extend(true, {}, options, options.alternativeImagesCustomizations[selectedTokenImage]);
             const overrideOptions = listItem.isTypeAoe() ? 
                 token_setting_options().filter(option=> availableToAoe.includes(option.name))
                  .map(option => convert_option_to_override_dropdown(option)) 
@@ -3696,10 +3699,10 @@ function build_token_div_for_sidebar_modal(imageUrl, listItem, placedToken) {
         options = {...placedToken.options};
     }
     if(options.alternativeImagesCustomizations != undefined && options.alternativeImagesCustomizations[parsedImage] != undefined){
-        options = {
-            ...options,
-            ...options.alternativeImagesCustomizations[parsedImage]
-        }
+        options = $.extend(true, {}, 
+            options, 
+            options.alternativeImagesCustomizations[parsedImage]
+        )
     }
 
     let tokenDiv = build_alternative_image_for_modal(parsedImage, options, placedToken, listItem);
@@ -3707,7 +3710,7 @@ function build_token_div_for_sidebar_modal(imageUrl, listItem, placedToken) {
         tokenDiv.attr("data-monster", placedToken.options.monster);
     }
     set_list_item_identifier(tokenDiv, listItem);
-    enable_draggable_token_creation(tokenDiv, parsedImage);
+    enable_draggable_token_creation(tokenDiv, parsedImage, true);
     return tokenDiv;
 
 }
@@ -3791,7 +3794,7 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
         // the placedToken image has been changed by the user so put it at the front
         let tokenDiv = build_token_div_for_sidebar_modal(placedImg, listItem, placedToken);
         tokenDiv.attr("data-token-id", placedToken.options.id);
-        if((currentlySelectedToken != undefined && tokenDiv.find('.div-token-image')?.attr('src') == currentlySelectedToken) || (selectedTokenImage != undefined && tokenDiv.find('.div-token-image')?.attr('src') == selectedTokenImage))
+        if((currentlySelectedToken != undefined && placedImg == currentlySelectedToken) || (selectedTokenImage != undefined && placedImg == selectedTokenImage))
             tokenDiv.toggleClass('selected', true);
         if(defaultImage != undefined && defaultImage == placedImg)
             tokenDiv.toggleClass('default-token-image');
@@ -3807,7 +3810,8 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
             listItem.image = pc.image;
         }
         let tokenDiv = build_token_div_for_sidebar_modal(listItem?.image, listItem, placedToken);
-        if((currentlySelectedToken != undefined && tokenDiv.find('.div-token-image')?.attr('src') == currentlySelectedToken) || (selectedTokenImage != undefined && tokenDiv.find('.div-token-image')?.attr('src') == selectedTokenImage))
+        const image = parse_img(listItem.image);
+        if((currentlySelectedToken != undefined && image == currentlySelectedToken) || (selectedTokenImage != undefined && image == selectedTokenImage))
             tokenDiv.toggleClass('selected', true);
         modalBody.append(tokenDiv);
     }
@@ -3817,47 +3821,37 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
           return `class=aoe-token-tileable aoe-style-${aoeStyle.toLowerCase()} aoe-shape-${listItem.shape}`
         })
     }
+    const exampleImageChunkSize = 14;
+    let nextIndex = 0;
 
-    function* addExampleToken(index) {
-        
-        while(index < index+8 && index<alternativeImages.length){
-            setTimeout(function(){
-                if(index < alternativeImages.length){
-                    let tokenDiv = build_token_div_for_sidebar_modal(alternativeImages[index], listItem, placedToken);
-                    if((currentlySelectedToken != undefined && tokenDiv.find('.div-token-image')?.attr('src') == currentlySelectedToken) || (selectedTokenImage != undefined && tokenDiv.find('.div-token-image')?.attr('src') == selectedTokenImage))
-                        tokenDiv.toggleClass('selected', true);
-                    if(defaultImage != undefined && defaultImage == alternativeImages[index])
-                        tokenDiv.toggleClass('default-token-image');
-                    modalBody.append(tokenDiv);
-                    index++;
-                }
-            })
-            yield
-        }
-       
+    function appendNextBatch() {
+        const batch = alternativeImages.slice(nextIndex, nextIndex + exampleImageChunkSize);
+        const fragment = document.createDocumentFragment();
+
+        batch.forEach(imageUrl => {
+            const tokenDiv = build_token_div_for_sidebar_modal(imageUrl, listItem, placedToken);
+            const image = parse_img(imageUrl);
+            if ((currentlySelectedToken && image === currentlySelectedToken) || (selectedTokenImage && image === selectedTokenImage)) {
+                tokenDiv.toggleClass('selected', true);
+            }
+            if (defaultImage && defaultImage === imageUrl) {
+                tokenDiv.toggleClass('default-token-image');
+            }
+            fragment.appendChild(tokenDiv[0]);
+        });
+
+        modalBody.append(fragment);
+        nextIndex += batch.length;
     }
-    let buildToken = addExampleToken(0);
+
     const debounceExampleToken = mydebounce(() => {
         if (modalBody.scrollTop() + 300 >=
             modalBody[0].scrollHeight) {
-            for (let i = 0; i < 8; i++) {
-                buildToken.next()
-            }
+            appendNextBatch();
         }
     }, 50)
     modalBody.off('scroll.exampleToken').on('scroll.exampleToken', debounceExampleToken);
-    for (let i = 0; i < alternativeImages.length; i++) {
-        if (drawInline) {
-            let tokenDiv = build_token_div_for_sidebar_modal(alternativeImages[i], listItem, placedToken);
-            if(defaultImage != undefined && defaultImage == alternativeImages[i])
-                tokenDiv.toggleClass('default-token-image');
-            modalBody.append(tokenDiv);
-        } else {
-            if(i<13){
-                buildToken.next();
-            }
-        }
-    }
+    appendNextBatch();
 
     if (alternativeImages.length === 0) {
         sidebarPanel.footer.find(".token-image-modal-url-label-add-wrapper > .token-image-modal-url-label-wrapper > .token-image-modal-footer-title").text("Replace The Default Image");
@@ -3878,13 +3872,13 @@ function redraw_token_images_in_modal(sidebarPanel, listItem, placedToken, drawI
 function build_alternative_image_for_modal(image, options, placedToken, listItem) {
     let mergedOptions = {};
     if (options !== undefined) {
-        mergedOptions = {...mergedOptions, ...options};
+        mergedOptions = $.extend(true, {}, mergedOptions, options);
     }
     if (placedToken !== undefined) {
-        mergedOptions = {...mergedOptions, ...placedToken.options};
+        mergedOptions = $.extend(true, {}, mergedOptions, placedToken.options);
     }
     if (listItem?.isTypeAoe()) {
-        mergedOptions = {...mergedOptions, ...build_aoe_token_options(listItem.style, listItem.shape, listItem.size, listItem.name)};
+        mergedOptions = $.extend(true, {}, mergedOptions, build_aoe_token_options(listItem.style, listItem.shape, listItem.size, listItem.name));
     }
     mergedOptions.imgsrc = image;
     let tokenDiv = build_example_token(mergedOptions);
@@ -3926,10 +3920,10 @@ async function decorate_modal_images(sidebarPanel, listItem, placedToken) {
         let item = $(items[i]);
         let imgsrc = item.find(".div-token-image, .token-image").attr("data-src");
         if(options.alternativeImagesCustomizations != undefined && options.alternativeImagesCustomizations[imgsrc] != undefined){
-            combinedOptions = {
-                ...options,
-                ...options.alternativeImagesCustomizations[imgsrc]
-            }
+            combinedOptions = $.extend(true, {}, 
+                options,
+                options.alternativeImagesCustomizations[imgsrc]
+            )
         }
         
         let tokenDiv = build_alternative_image_for_modal(imgsrc, combinedOptions, placedToken, listItem);
@@ -4116,7 +4110,7 @@ function inject_encounter_monsters() {
 function did_change_mytokens_items() {
     rebuild_token_items_list();
     filter_token_list($('[name="token-search"]').val() ? $('[name="token-search"]').val() : "");
-}
+}   
 
 /**
  * creates an iframe that loads a monster stat block for the given item
@@ -4925,10 +4919,10 @@ function display_change_image_modal(placedToken) {
             let html;
             let video = false;
             if(token?.options.videoToken == true || (['.mp4', '.webm', '.m4v'].some(d => imgUrl.includes(d)))){
-                html = $(`<video disableRemotePlayback muted autoplay='false' data-src='${imgUrl}'  class="example-token" data-token-id='${token?.options.id}' loading="lazy" alt="alternative image" />`);  
+                html = $(`<video disableRemotePlayback muted autoplay='false' data-src='${imgUrl}'  class="example-token" data-token-id='${token?.options.id}' alt="alternative image" />`);  
                 video = true;   
             } else{
-                html = $(`<img class="example-token" loading="lazy" data-src='${imgUrl}' data-token-id='${token?.options.id}' alt="alternative image" />`);
+                html = $(`<img class="example-token" data-src='${imgUrl}' data-token-id='${token?.options.id}' alt="alternative image" />`);
             }
             updateImgSrc(imgUrl, html, video);
             // the user is changing their token image, allow them to simply click an image
@@ -4943,10 +4937,10 @@ function display_change_image_modal(placedToken) {
                     if(token){ 
                         
                         if (token.options.alternativeImagesCustomizations != undefined) {
-                            token.options = {
-                                ...token.options,
-                                ...token.options.alternativeImagesCustomizations[imgSrc],
-                            }
+                            token.options = $.extend(true, {}, 
+                                token.options,
+                                token.options.alternativeImagesCustomizations[imgSrc],
+                            );
                             const newSize = token.options.tokenSize 
                                                 ? token.options.tokenSize * hpps 
                                                 : token.options.size ?? hpps ;

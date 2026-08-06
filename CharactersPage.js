@@ -325,7 +325,7 @@ const buffsDebuffs = {
     "type": "feat",
     "replace": /(.)$/gi,//last character
     "replaceType": {
-      "damage": '[class*="styles_attack"]:has(.ddbc-note-components__component:contains("Heavy"))' //looks for Heavy trait in item note
+      "dmg": '[class*="styles_attack"]:has(.ddbc-note-components__component:contains("Heavy"))' //looks for Heavy trait in item note
     },
     "newRoll": '$1+PB', //add proficiency
   },
@@ -336,7 +336,7 @@ const buffsDebuffs = {
     "check": "0",
     "replace": /(\d+d\d+)/gi,
     "replaceType": {
-      "damage": 'button' 
+      "dmg": 'button' 
     },
     "newRoll": '$1ro<2',//reroll 1
     "type": "feat",
@@ -352,6 +352,22 @@ const buffsDebuffs = {
     },
     "newRoll": '$1ro<2',//reroll 1
     "type": "feat",
+  },
+  "Triage Expert": {
+    "tohit": "0",
+    "dmg": "0",
+    "save": "0",
+    "check": "0",
+    "replace": /(\d+)(d\d+)/i,
+    "replaceType": {
+      "heal": 'button'
+    },
+    "newRoll": function(m){
+      const match = m.match(/(\d+)(d\d+)/i)
+      return `${1+parseInt(match[1])}${match[2]}kh${parseInt(match[1])}`
+    },
+    "type": "feat",
+ 
   },
   "Call the Hunt": {
     "tohit": "0",
@@ -1046,7 +1062,7 @@ const buffsDebuffs = {
         "check": "0",
         "replace": /^(\d+d\d+)/gi,//find first roll
         "replaceType": {
-          "damage": 'button:has(.ddbc-damage--versatile), .ddbc-combat-item-attack--melee:has(.ddbc-note-components__component:contains("Two-Handed"))' //looks for versatile 2 hand button or two-handed trait in item note
+          "dmg": 'button:has(.ddbc-damage--versatile), .ddbc-combat-item-attack--melee:has(.ddbc-note-components__component:contains("Two-Handed"))' //looks for versatile 2 hand button or two-handed trait in item note
         },
         "newRoll": '$1min3',//replace with original roll with minimum roll of 3
       },
@@ -1057,7 +1073,7 @@ const buffsDebuffs = {
         "check": "0",
         "replace": /^(\d+d\d+)/gi,//find first roll
         "replaceType": {
-            "damage": 'button:has(.ddbc-damage--versatile), .ddbc-combat-item-attack--melee:has(.ddbc-note-components__component:contains("Two-Handed"))' //looks for versatile 2 hand button or two-handed trait in item note
+            "dmg": 'button:has(.ddbc-damage--versatile), .ddbc-combat-item-attack--melee:has(.ddbc-note-components__component:contains("Two-Handed"))' //looks for versatile 2 hand button or two-handed trait in item note
         },
         "newRoll": '$1ro<3',//reroll 1 & 2
       },
@@ -1621,7 +1637,7 @@ function inject_dice_roll(element, clear=true) {
           command[1] = 'r';
         }
         const diceRoll = DiceRoll.fromSlashCommand(command[0], window.PLAYER_NAME, window.PLAYER_IMG, "character", window.PLAYER_ID); // TODO: add gamelog_send_to_text() once that's available on the characters page without avtt running
-        updatedInnerHtml = updatedInnerHtml.replace(originalCommand, `<button class='avtt-roll-formula-button integrated-dice__container ${iconRoll ? 'abovevtt-icon-roll' : ''}' title="${diceRoll.action?.toUpperCase() ?? "CUSTOM"}: ${diceRoll.rollType?.toUpperCase() ?? "ROLL"}" data-slash-command="${command[0]}">${diceRoll.expression}</button>`);
+        updatedInnerHtml = updatedInnerHtml.replace(originalCommand, `<button class='avtt-roll-formula-button integrated-dice__container ${iconRoll ? 'abovevtt-icon-roll' : ''}' title="${diceRoll.action?.toUpperCase() ?? "CUSTOM"}: ${diceRoll.rollType?.toUpperCase() ?? "ROLL"}" data-slash-command="${command[0]?.replace(/[><\s]+$|^[<>\s]+/gi, '')}">${diceRoll.expression}</button>`);
       } catch (error) {
         console.warn("inject_dice_roll failed to parse slash command. Removing the command to avoid infinite loop", command, command[0]);
         updatedInnerHtml = updatedInnerHtml.replace(originalCommand, '');
@@ -2166,17 +2182,6 @@ function observe_character_sheet_changes(documentToObserve) {
     })
     // console.log("character_sheet_observer", mutationList);
 
-    // initial injection of our buttons
-    const notes = documentToObserve.find(".ddbc-note-components__component:not('.above-vtt-dice-visited')");
-    notes.each(function() {
-      // console.log("character_sheet_observer iterating", mutationList);
-      try {
-        inject_dice_roll($(this));
-        $(this).addClass("above-vtt-dice-visited"); // make sure we only parse this element once
-      } catch (error) {
-        console.log("inject_dice_roll failed to process element", error);
-      }
-    });
 
 
     if(is_abovevtt_page()){
@@ -2262,19 +2267,21 @@ function observe_character_sheet_changes(documentToObserve) {
           const spellContainer = $(this).closest('.ct-spells-spell')
           const name = spellContainer.find(".ddbc-spell-name, [class*='styles_spellName']").first().text()
           let color = "default"
-          const feet = $(this).prev().find("[class*='styles_numberDisplay'] span:first-of-type").text();
+          let feet = $(this).prev().find("[class*='styles_numberDisplay'] span:first-of-type").text();
           const dmgIcon = $(this).closest('.ct-spells-spell').find('.ddbc-damage-type-icon');
           if (dmgIcon.length == 1){
             color = dmgIcon.attr('class').split(' ').filter(d => d.startsWith('ddbc-damage-type-icon--'))[0].split('--')[1];
           }
           let shape = $(this).find('svg').first().attr('class').split(' ').filter(c => c.startsWith('ddbc-aoe-type-icon--'))[0].split('--')[1];
           shape = window.top.sanitize_aoe_shape(shape)
+
           button.attr("title", "Place area of effect token")
           button.attr("data-shape", shape);
           button.attr("data-style", color);
           button.attr("data-size", feet);
           button.attr("data-name", name);
 
+              
           // Players need the token side panel for this to work for them.
           // adjustments will be needed in enable_Draggable_token_creation when they do to make sure it works correctly
           // set_full_path(button, `${RootFolder.Aoe.path}/${shape} AoE`)
@@ -2282,13 +2289,21 @@ function observe_character_sheet_changes(documentToObserve) {
           button.css("border-width","1px");
           button.click(function(e) {
             e.stopPropagation();
+
             // hide the sheet, and drop the token. Don't reopen the sheet because they probably  want to position the token right away
             if(is_abovevtt_page() || window.self != window.top){
+              const circleIsSquare = window.top.get_avtt_setting_value('circleIsSquare');
+              let newShape = shape;
+              let newFeet = feet;
+              if(circleIsSquare && shape == 'circle'){
+                newShape = 'square';
+                newFeet *= 2;
+              }
               window.top.hide_player_sheet();
               window.top.minimize_player_sheet();
 
-
-              let options = window.top.build_aoe_token_options(color, shape, feet / window.top.CURRENT_SCENE_DATA.fpsq, name)
+      
+              let options = window.top.build_aoe_token_options(color, newShape, newFeet / window.top.CURRENT_SCENE_DATA.fpsq, name)
               if(name == 'Darkness' || name == 'Maddening Darkness' ){
                 options = {
                   ...options,
@@ -2327,15 +2342,15 @@ function observe_character_sheet_changes(documentToObserve) {
     const snippets = documentToObserve.find(`
       .ddbc-snippet__content p:not('.above-vtt-visited'), 
       .ct-sidebar__inner [class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):last-of-type>div>div:not(.ct-item-detail__customize):not([class*='__intro']) p:not(.above-vtt-visited),
-      .ct-sidebar__inner [class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):last-of-type>div>div[class*='ct-item-detail__customize']:nth-child(4) p:not(.above-vtt-visited),
       .ct-sidebar__inner [class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):last-of-type>div>div:not(.ct-item-detail__customize):not([class*='__intro']) tr:not(.above-vtt-visited),
       .ct-sidebar__inner [class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):last-of-type>div>div:not(.ct-item-detail__customize):not([class*='__intro']) div[class*='--damage']:not([class*='__modifier']):not(.ct-customize-data-editor__property--damagetypeid):not(.above-vtt-visited),
       .ct-sidebar__inner [class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):not([class*='ct-preferences-pane']):last-of-type>div>div:not(.ct-item-detail__customize):not([class*='__intro']) span:not([class*='button']):not([class*='casting']):not([class*='__modifier']):not([class*='Checkbox_inputContainer']):not(.above-vtt-visited),
-      [class*='spell-damage-group'] span[class*='__value']:not(.above-vtt-visited)
+      [class*='spell-damage-group'] span[class*='__value']:not(.above-vtt-visited), 
+      .ct-sidebar__inner .ct-item-detail__description:not(.above-vtt-visited), 
+      .ct-item-detail [class*='styles_value__']:not('.above-vtt-visited')
     `);
   
     if(add_journal_roll_buttons && snippets.length > 0){
-
       snippets.addClass("above-vtt-visited");
       snippets.find('.ddbc-snippet__tag, .ddbc-tooltip[data-origintal-tile]').each(function(){   
         const curr = $(this);
@@ -2351,14 +2366,24 @@ function observe_character_sheet_changes(documentToObserve) {
         const curr = $(this);
         if (curr.has('>button').length > 0 
           || curr.closest(`[class*='styles_sidebar'] [class*='styles_pane']>[class*='styles_content']>div:not(.sidebar-panel-content), [class*='styles_content']>div>div:not(.sidebar-panel-content)`).has('input[type="search"], .ct-preferences-pane').length > 0 
-          || curr.closest('.ct-spell-manage-pane').length>0
-          || curr.closest('.ct-custom-action-pane').length>0)
+          || curr.closest('.ct-spell-manage-pane').length > 0 
+          || curr.closest('[class*="styles_mark__"]').length>0)
           return; // do not adjust side bar when it includes a search such as adding extras as it causes crashing
-        add_journal_roll_buttons(curr);
-        add_aoe_statblock_click(curr, `/profile/${window.myUser}/characters/${window.PLAYER_ID}`);
+        add_journal_roll_buttons(curr, `/profile/${window.myUser}/characters/${window.PLAYER_ID}`);
       })
     } 
- 
+     // initial injection of our buttons
+    const notes = documentToObserve.find(".ddbc-note-components__component:not('.above-vtt-dice-visited')");
+    notes.each(function() {
+      // console.log("character_sheet_observer iterating", mutationList);
+      try {
+        inject_dice_roll($(this));
+        $(this).addClass("above-vtt-dice-visited"); // make sure we only parse this element once
+      } catch (error) {
+        console.log("inject_dice_roll failed to process element", error);
+      }
+    });
+
     // for buttons text that changes based on input, such as damage change from adjusting spell level in the sidebar
     const manualSetRollbuttons = documentToObserve.find(`.ct-spell-caster__modifier-amount:not(.above-vtt-visited)`) 
     if(manualSetRollbuttons.length > 0){

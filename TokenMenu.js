@@ -517,7 +517,7 @@ function token_context_menu_expanded(tokenIds, e, crossScenePortalData) {
 						const copyLink = `${tokenIds};${window.CURRENT_SCENE_DATA.id}`
 						navigator.clipboard.writeText(copyLink);
 						showTempMessage('Portal ID copied to clipboard');
-					});0
+					});
 					body.append(copyPortalId);
 				}
 				
@@ -2103,6 +2103,33 @@ function build_token_auras_inputs(tokenIds) {
 	} else {
 		wrapper.find(".token-config-aura-wrapper").hide();
 	}
+	
+	let tokensSquareAura = tokens.map(t => t.options.squareAura);
+	let uniqueSquareAura = [...new Set(tokensSquareAura)];
+	let squareAuraIsEnabled = null;
+	if (uniqueSquareAura.length === 1) {
+		squareAuraIsEnabled = uniqueSquareAura[0];
+	}
+	const squareAura = {
+		name: "squareAura",
+		label: "Square Aura",
+		type: "toggle",
+		options: [
+			{ value: true, label: "Square", description: "The token's aura is a square when enabled and a circle otherwise." },
+			{ value: false, label: "Circle", description: "The token's aura is a square when enabled and a circle otherwise." }
+		],
+		defaultValue: false
+	};
+	const squareAuraInput = build_toggle_input(squareAura, squareAuraIsEnabled, function(name, newValue) {
+		console.log(`${name} setting is now ${newValue}`);
+		tokens.forEach(token => {
+			token.options[name] = newValue;
+			token.place_sync_persist();
+		});
+	});
+	wrapper.find(".token-config-aura-wrapper").prepend(squareAuraInput);
+	
+
 	const hideAuraLabel = (allTokensArePlayer) ? 'Hide Aura from other Players' : 'Hide Aura from Players';
 	const hideAura = {
 		name: "hideaura",
@@ -2124,6 +2151,8 @@ function build_token_auras_inputs(tokenIds) {
 	if(window.DM || (tokens.length == 1 && (window.TOKEN_OBJECTS[tokens[0].options.id].options.player_owned || allTokensArePlayer))){
 		wrapper.find(".token-config-aura-wrapper").prepend(hideAuraInput);
 	}
+
+
 	let radiusInputs = wrapper.find('input.aura-radius');
 	radiusInputs.on('keyup', function(event) {
 		let newRadius = event.target.value;
@@ -2585,8 +2614,32 @@ function build_token_light_inputs(tokenIds, door=false) {
 	if(!window.DM){
 		enabledLightInput.hide();
 	}
+	let tokensSquareLight = tokens.map(t => t.options.squareLight);
+	let uniqueSquareLight = [...new Set(tokensSquareLight)];
+	let squareLightIsEnabled = null;
+	if (uniqueSquareLight.length === 1) {
+		squareLightIsEnabled = uniqueSquareLight[0];
+	}
+	const squareLight = {
+		name: "squareLight",
+		label: "Square Vision/Light",
+		type: "toggle",
+		options: [
+			{ value: true, label: "Square", description: "The token's vision/light is a square when enabled and a circle otherwise." },
+			{ value: false, label: "Circle", description: "The token's vision/light is a square when enabled and a circle otherwise." }
+		],
+		defaultValue: false
+	};
+	const squareLightInput = build_toggle_input(squareLight, squareLightIsEnabled, function(name, newValue) {
+		console.log(`${name} setting is now ${newValue}`);
+		tokens.forEach(token => {
+			token.options[name] = newValue;
+			token.place_sync_persist();
+		});
+	});
 
-	wrapper.find(".token-config-aura-wrapper").prepend(revealVisionInput);
+	
+	wrapper.find(".token-config-aura-wrapper").prepend(squareLightInput, revealVisionInput);
 	
 
 	wrapper.find("h3.token-image-modal-footer-title").after(enabledLightInput);
@@ -2595,6 +2648,8 @@ function build_token_light_inputs(tokenIds, door=false) {
 	} else {
 		wrapper.find(".token-config-aura-wrapper").hide();
 	}
+
+	
 
 	let radiusInputs = wrapper.find('input.light-radius, input.vision-radius');
 	radiusInputs.on('keyup', function(event) {
@@ -3278,8 +3333,8 @@ function build_menu_stat_inputs(tokenIds) {
 	body.append(hpMenuInput);
 	body.append(maxHpMenuInput);
 
-	const debouceChangeInput = mydebounce((token)=>{
-		token.place_sync_persist();
+	const debounceTriggerKeyboard = mydebounce((input, keyboardEvent)=>{
+		input.trigger(keyboardEvent);
 	})
 	if(!isNaN(hp) && !isNaN(max_hp)){
 		hpMenuInput.find('input').on('wheel', function(e) {
@@ -3288,23 +3343,25 @@ function build_menu_stat_inputs(tokenIds) {
 				return;
 			e.preventDefault();
 			const delta = e.originalEvent.deltaY < 0 ? 1 : -1;
-			const current = parseInt(tokens[0].hp) || 0;
+			const current = parseInt(input.val());
+			if(isNaN(current)) return;
 			input.val(Math.max(0, current + delta));
 			const keyboardEvent = $.Event('keyup');
 			keyboardEvent.key = 'Enter'; 
-			input.trigger(keyboardEvent);
+			debounceTriggerKeyboard(input, keyboardEvent);
 		});
 		maxHpMenuInput.find('input').on('wheel', function(e) {
 			const input = $(this);
-			if(!input.is(':focus'))
+			if(!input.is(':focus'))s
 				return;
 			e.preventDefault();
 			const delta = e.originalEvent.deltaY < 0 ? 1 : -1;
-			const current = parseInt(tokens[0].maxHp) || 0;
+			const current = parseInt(input.val());
+			if(isNaN(current)) return;
 			input.val(Math.max(1, current + delta));
 			const keyboardEvent = $.Event('keyup');
 			keyboardEvent.key = 'Enter'; 
-			input.trigger(keyboardEvent);
+			debounceTriggerKeyboard(input, keyboardEvent);
 		});
 	}
 
@@ -3319,9 +3376,13 @@ function build_menu_stat_inputs(tokenIds) {
 				let newHP = newValue;
 				if(newValue.indexOf("+") == 0 || newValue.indexOf("-") == 0){
 					newHP = token.hp + parseInt(newValue);
+				} else{
+					const sanitizedString = newHP.replaceAll(/[^\d+-/*().]/gi, '');
+					newHP = Math.max(0, parseInt(eval(sanitizedString)));
 				}
+
 				token.hp = newHP - token.tempHp;
-				debouceChangeInput(token);
+				token.place_sync_persist();
 				if(tokens.length == 1){
 					$(".hpMenuInput").val(newHP);
 				}
@@ -3341,6 +3402,9 @@ function build_menu_stat_inputs(tokenIds) {
 			let newHP = newValue;
 			if(newValue.indexOf("+") == 0 || newValue.indexOf("-") == 0){
 				newHP = token.hp + parseInt(newValue);
+			} else{
+				const sanitizedString = newHP.replaceAll(/[^\d+-/*().]/gi, '');
+				newHP = Math.max(0, parseInt(eval(sanitizedString)));
 			}
 			token.hp = newHP - token.tempHp;
 			token.place_sync_persist();
@@ -3365,6 +3429,9 @@ function build_menu_stat_inputs(tokenIds) {
 				let newMaxHP = newValue;
 				if(newValue.indexOf("+") == 0 || newValue.indexOf("-") == 0){
 					newMaxHP = token.maxHp + parseInt(newValue);
+				} else{
+					const sanitizedString = newMaxHP.replaceAll(/[^\d+-/*().]/gi, '');
+					newMaxHP = Math.max(0, parseInt(eval(sanitizedString)));
 				}
 				token.maxHp = newMaxHP;
 				debouceChangeInput(token);
@@ -3388,6 +3455,9 @@ function build_menu_stat_inputs(tokenIds) {
 			let newMaxHP = newValue;
 			if(newValue.indexOf("+") == 0 || newValue.indexOf("-") == 0){
 				newMaxHP = token.maxHp + parseInt(newValue);
+			} else{
+				const sanitizedString = newMaxHP.replaceAll(/[^\d+-/*().]/gi, '');
+				newMaxHP = Math.max(0, parseInt(eval(sanitizedString)));
 			}
 			token.maxHp = newMaxHP;
 			token.place_sync_persist();
@@ -3864,7 +3934,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 				if(persist)
 					token.place_sync_persist();
 			});
-		});
+		}, "Adjust the X position of the image. Larger values moves the image right, smaller left.");
 		body.append(offsetXWrapper);
 
 		let tokenOffsetY = tokens.map(t => t.options.offset?.y);
@@ -3884,7 +3954,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 				if(persist)
 					token.place_sync_persist();
 			});
-		});
+		}, "Adjust the Y position of the image. Larger values moves the image up, smaller down.");
 		body.append(offsetYWrapper);
 
 
@@ -3902,7 +3972,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 				if(persist)
 					token.place_sync_persist();
 			});
-		});
+		}, "This will adjust the zoom of the image. Different clipping will happen based on token style.");
 		body.append(imageZoomWrapper);
 
 
@@ -3916,7 +3986,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 				if(persist)
 					token.place_sync_persist();
 			});
-		});
+		}, "This will adjust the image opacity. Accepted values between 0 and 1, 0 being fully transparent.");
 		body.append(opacityWrapper);
 
 		let tokenHeading = tokens.map(t => t.options.imageHeading);
@@ -3929,7 +3999,7 @@ function build_adjustments_flyout_menu(tokenIds) {
 				if(persist)
 					token.place_sync_persist();
 			});
-		});
+		}, "This will adjust the default image direction/rotation. This affects where the 'look here' rotation and arrow key rotation uses as the token facing direction. Default token facing is down.");
 		body.append(headingWrapper);
 
 		let tokFlip = tokens.map(t => t.options?.tokenFlip);
@@ -3994,11 +4064,12 @@ function build_adjustments_flyout_menu(tokenIds) {
 			return e.player == true;
 		});
 	}
+	const skipSettings = ['maxAge', 'defaultmaxhptype', 'placeType', 'lockRestrictDrop', 'hidden', 'squareAura', 'squareLight']
 	for(let i = 0; i < token_settings.length; i++) {
 		let setting = token_settings[i];
 		if (allTokensAreAoe && !availableToAoe.includes(setting.name)) {
 			continue;
-		} else if(setting.hiddenSetting || setting.name == 'maxAge' || setting.name == 'defaultmaxhptype' || setting.name == 'placeType' || setting.globalSettingOnly || setting.name == 'lockRestrictDrop' || setting.name == 'hidden' ) {
+		} else if(setting.hiddenSetting || setting.globalSettingOnly || skipSettings.includes(setting.name)) {
 			continue;
 		}
 
@@ -4336,8 +4407,8 @@ function build_token_scale_input(startingScale, tokens, name, min=0.1, max=10, s
 	return imageWrapper;
 }
 
-function build_token_num_input(startingScale=1, tokens, name, min=0.1, max=10, step=0.1, didUpdate) {
-	let imageInput = $(`<input class="image-input-number" type="number" max="${max}" min="${min}" step="${step}" title="Token Image Scale" placeholder="${startingScale}" name="Image Scale">`);
+function build_token_num_input(startingScale=1, tokens, name, min=0.1, max=10, step=0.1, didUpdate, title="Token Image Scale") {
+	let imageInput = $(`<input class="image-input-number" type="number" max="${max}" min="${min}" step="${step}" title="${title}" placeholder="${startingScale}" name="Image Scale">`);
 
 	imageInput.val(startingScale);
 
@@ -5271,7 +5342,7 @@ function add_to_quick_roll_menu(token, autoRollAfterAoe = false) {
 
 	if (!token.isPlayer()) {
 		const debounceChange = mydebounce((token) => {
-			token.update_and_sync()
+			token.sync();
 		}, 1500)
 		hp_input.on('wheel', function(e) {
 			const input = $(this);
@@ -5296,21 +5367,29 @@ function add_to_quick_roll_menu(token, autoRollAfterAoe = false) {
 		hp_input.change(function(e) {
 			let selector = "div[data-id='" + token.options.id + "']";
 			let old = $("#tokens").find(selector);
-		
-			if (hp_input.val().trim().startsWith("+") || hp_input.val().trim().startsWith("-")) {
-				hp_input.val(Math.max(0, parseInt(token.hp) + parseInt(hp_input.val())));
+			let value = hp_input.val().trim();
+			if (value.startsWith("+") || value.trim().startsWith("-")) {
+				value = Math.max(0, parseInt(token.hp) + parseInt(value));
+				hp_input.val(value);
+			} else{
+				const sanitizedString = value.replaceAll(/[^\d+-/*().]/gi, '');
+				value = Math.max(0, parseInt(eval(sanitizedString)));
+				hp_input.val(value);
 			}
 
-			old.find(".hp").val(hp_input.val().trim());	
+			old.find(".hp").val(value);	
 
 			if(window.all_token_objects[token.options.id] != undefined){
-				window.all_token_objects[token.options.id].hp = hp_input.val();
+				window.all_token_objects[token.options.id].hp = value;
 			}			
 			if(window.TOKEN_OBJECTS[token.options.id] != undefined){		
-				window.TOKEN_OBJECTS[token.options.id].hp = hp_input.val();	
+				window.TOKEN_OBJECTS[token.options.id].hp = value;	
+				window.TOKEN_OBJECTS[token.options.id].update_from_page()
 				debounceChange(window.TOKEN_OBJECTS[token.options.id]);
 			}			
-			qrm_update_popout();
+
+			window.all_token_objects[token.options.id].update_combat_tracker()
+			window.all_token_objects[token.options.id].update_quick_roll();
 		});
 		hp_input.click(function(e) {
 			$(e.target).select();
@@ -5318,20 +5397,27 @@ function add_to_quick_roll_menu(token, autoRollAfterAoe = false) {
 		maxhp_input.change(function(e) {
 			let selector = "div[data-id='" + token.options.id + "']";
 			let old = $("#tokens").find(selector);
-
-			if (maxhp_input.val().trim().startsWith("+") || maxhp_input.val().trim().startsWith("-")) {
-				maxhp_input.val(Math.max(0, parseInt(token.hp) + parseInt(maxhp_input.val())));
+			let value = maxhp_input.val().trim();
+			if (value.startsWith("+") || value.startsWith("-")) {
+				value = Math.max(0, parseInt(token.hp) + parseInt(value));
+				maxhp_input.val(value);
+			} else{
+				const sanitizedString = value.replaceAll(/[^\d+-/*().]/gi, '');
+				value = Math.max(0, parseInt(eval(sanitizedString)));
+				maxhp_input.val(value);
 			}
 
-			old.find(".max_hp").val(maxhp_input.val().trim());
+			old.find(".max_hp").val(value);
 			if(window.all_token_objects[token.options.id] != undefined){
-				window.all_token_objects[token.options.id].maxHp = maxhp_input.val();
+				window.all_token_objects[token.options.id].maxHp = value;
 			}
 			if(window.TOKEN_OBJECTS[token.options.id] != undefined){		
-				window.TOKEN_OBJECTS[token.options.id].maxHp = maxhp_input.val();	
+				window.TOKEN_OBJECTS[token.options.id].maxHp = value;	
+				window.TOKEN_OBJECTS[token.options.id].update_from_page()
 				debounceChange(window.TOKEN_OBJECTS[token.options.id]);
 			}			
-			qrm_update_popout();
+			window.all_token_objects[token.options.id].update_combat_tracker()
+			window.all_token_objects[token.options.id].update_quick_roll();
 		});
 		maxhp_input.click(function(e) {
 			$(e.target).select();

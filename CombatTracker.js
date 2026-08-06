@@ -806,16 +806,9 @@ function update_carousel_combat_tracker(){
 	    }
 
 	    table.find(`tr[data-target='${firstTokenId}']`).toggleClass('first-in-round', true);
-		const images = table.find(`tr td:first-of-type img[data-id^='above-bucket-not-a-url']`);
-
-		for(let image of images){
-			image = $(image);
-			const imageId = image.attr('data-id');
-			updateImgSrc(imageId, image, image.is('video'), true)
-		}
-
-
-	    if(window.DM){
+		const images = table.find(`tr td:first-of-type img`);
+	    
+		if(window.DM){
 	    		carouselContainer.find('#combat_prev_button, #combat_next_button').remove();
 	    		const prevButtonClone = $('#combat_prev_button').clone(true, true);
 			    const nextButtonClone = $('#combat_next_button').clone(true, true);
@@ -833,6 +826,15 @@ function update_carousel_combat_tracker(){
 
 	    	
 	    }
+
+		for(let image of images){
+			image = $(image);
+			const imageId = image.attr('data-id');
+			updateImgSrc(imageId, image, image.is('video'), true)
+		}
+
+
+
     }
 
 
@@ -1365,26 +1367,36 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 	// token update logic for hp pulls hp from token hpbar, so update hp bar manually
 	if (!token.isPlayer()) {
 		const debounceChange = mydebounce(function(token){
-			token.update_and_sync();
+			token.sync();
 		}, 1500)
 		hp_input.change(function(e) {
 			let selector = "div[data-id='" + token.options.id + "']";
 			let old = $("#tokens").find(selector);
-		
-			if ($(this).val().trim().startsWith("+") || $(this).val().trim().startsWith("-")) {
-				$(this).val(Math.max(0, parseInt(token.hp) + parseInt($(this).val())));
+			let value = $(this).val().trim();
+			if (value.startsWith("+") || value.startsWith("-")) {
+				value = Math.max(0, parseInt(token.hp) + parseInt(value));
+				$(this).val(value);
+			} else{
+				const sanitizedString = value.replaceAll(/[^\d+-/*().]/gi, '');
+				value = Math.max(0, parseInt(eval(sanitizedString)));
+				$(this).val(value);
 			}
 
-			old.find(".hp").val($(this).val().trim());	
+			old.find(".hp").val(value);	
 
 			if(window.all_token_objects[token.options.id] != undefined){
-				window.all_token_objects[token.options.id].hp = $(this).val();
+				window.all_token_objects[token.options.id].hp = value;
+
 				debounceChange(window.all_token_objects[token.options.id]);
 			}			
 			if(window.TOKEN_OBJECTS[token.options.id] != undefined){		
-				window.TOKEN_OBJECTS[token.options.id].hp = $(this).val();
+				window.TOKEN_OBJECTS[token.options.id].hp = value;
+				window.TOKEN_OBJECTS[token.options.id].update_from_page();
 				debounceChange(window.TOKEN_OBJECTS[token.options.id]);
-			}			
+			}							
+				
+			window.all_token_objects[token.options.id].update_combat_tracker()
+			window.all_token_objects[token.options.id].update_quick_roll();	
 		});
 		hp_input.click(function(e) {
 			$(e.target).select();
@@ -1392,20 +1404,28 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 		maxhp_input.change(function(e) {
 			let selector = "div[data-id='" + token.options.id + "']";
 			let old = $("#tokens").find(selector);
-
-			if ($(this).val().trim().startsWith("+") || $(this).val().trim().startsWith("-")) {
-				$(this).val(Math.max(0, token.maxHp + parseInt($(this).val())));
+			let value = $(this).val().trim();
+			if (value.startsWith("+") || value.startsWith("-")) {
+				value = Math.max(0, token.maxHp + parseInt(value));
+				$(this).val(value);
+			} else{
+				const sanitizedString = value.replaceAll(/[^\d+-/*().]/gi, '');
+				value = Math.max(0, parseInt(eval(sanitizedString)));
+				$(this).val(value)
 			}
 
-			old.find(".max_hp").val($(this).val().trim());
+			old.find(".max_hp").val(value);
 			if(window.all_token_objects[token.options.id] != undefined){
-				window.all_token_objects[token.options.id].maxHp = $(this).val();
+				window.all_token_objects[token.options.id].maxHp = value;
 				debounceChange(window.all_token_objects[token.options.id]);
 			}
 			if(window.TOKEN_OBJECTS[token.options.id] != undefined){		
-				window.TOKEN_OBJECTS[token.options.id].maxHp = $(this).val();
+				window.TOKEN_OBJECTS[token.options.id].maxHp = value;
+				window.TOKEN_OBJECTS[token.options.id].update_from_page();
 				debounceChange(window.TOKEN_OBJECTS[token.options.id]);
-			}			
+			}							
+			window.all_token_objects[token.options.id].update_combat_tracker()
+			window.all_token_objects[token.options.id].update_quick_roll();		
 		});
 		maxhp_input.click(function(e) {
 			$(e.target).select();
@@ -1530,7 +1550,9 @@ function ct_add_token(token,persist=true,disablerolling=false, adv=false, dis=fa
 				if(pcURL){
 					open_player_sheet(pcURL, undefined, token.options.name);
 				}else{
-					load_monster_stat(undefined, token.options.id, customStatBlock)
+					const monsterId = !customStatBlock && token.options.statBlock == token.options.monster ? token.options.monster : undefined;
+					if(!customStatBlock && !monsterId) return;
+					load_monster_stat(monsterId, token.options.id, customStatBlock)
 				}
 
 				return;
