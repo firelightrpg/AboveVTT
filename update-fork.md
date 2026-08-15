@@ -6,44 +6,8 @@
 git remote add upstream https://github.com/cyruzzo/AboveVTT
 ```
 
-## 2. Switch to your local `main` branch
+## 2. Update main from remote and merge into branch
 
-```bash
-git checkout main
 ```
-
-## 3. Fetch the latest changes from `upstream`
-
-```bash
-git fetch upstream
-```
-
-## 4. Merge `upstream/main` into your local `main`
-
-```bash
-git merge upstream/main
-```
-
-## 5. Push the updated `main` to your GitHub fork
-
-```bash
-git push origin main
-```
-
-## 6. Switch to your feature branch
-
-```bash
-git checkout <your-branch>
-```
-
-## 7. Merge the updated `main` into your feature branch
-
-```bash
-git merge main
-```
-
-### 🧼 Optional: Rebase instead of merge for a cleaner history
-
-```bash
-git rebase main
+git checkout main && git fetch upstream && git merge upstream/main && git push && git checkout - && git merge main
 ```
