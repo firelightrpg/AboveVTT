@@ -1105,6 +1105,14 @@ function rotate_scene_data(scene, angle = 90, keepTokensUpright = true) {
 		y = parseFloat(y) || 0;
 		w = parseFloat(w) || 0;
 		h = parseFloat(h) || 0;
+		if (w < 0) {
+			x = x + w;
+			w = -w;
+		}
+		if (h < 0) {
+			y = y + h;
+			h = -h;
+		}
 		let rx = (angle === 90) ? (oldH - y - h) : (angle === 270) ? y : (angle === 180) ? (oldW - x - w) : x;
 		let ry = (angle === 90) ? x : (angle === 270) ? (oldW - x - w) : (angle === 180) ? (oldH - y - h) : y;
 		let rw = (angle === 90 || angle === 270) ? h : w;
@@ -1239,6 +1247,7 @@ function rotate_scene_data(scene, angle = 90, keepTokensUpright = true) {
 		for (let i = 0; i < revealsList.length; i++) {
 			let d = revealsList[i];
 			if (!Array.isArray(d)) continue;
+			console.log(`[AboveVTT Rotate] Reveal ${i} before:`, JSON.stringify(d));
 			if (d.length === 4 || d[4] === 0) {
 				let rect = transformRect(d[0], d[1], d[2], d[3]);
 				d[0] = rect.x; d[1] = rect.y; d[2] = rect.w; d[3] = rect.h;
@@ -1270,10 +1279,14 @@ function rotate_scene_data(scene, angle = 90, keepTokensUpright = true) {
 						if (Array.isArray(p) && p.length >= 2) {
 							let pt = transformPoint(p[0], p[1]);
 							p[0] = pt.x; p[1] = pt.y;
+						} else if (p && typeof p === 'object' && 'x' in p && 'y' in p) {
+							let pt = transformPoint(p.x, p.y);
+							p.x = pt.x; p.y = pt.y;
 						}
 					}
 				}
 			}
+			console.log(`[AboveVTT Rotate] Reveal ${i} after:`, JSON.stringify(d));
 		}
 	}
 	transformReveals(scene.reveals);
@@ -1374,6 +1387,9 @@ async function rotate_scene(scene_id, angle = 90, keepTokensUpright = true) {
 					});
 					const rot = tok.options.rotation || 0;
 					el.find('.token-image').css('transform', `rotate(${rot}deg)`);
+				}
+				if (typeof tok.place === 'function') {
+					tok.place(0);
 				}
 				window.MB.sendMessage('custom/myVTT/token', tok.options, false, fullScene.id);
 			}

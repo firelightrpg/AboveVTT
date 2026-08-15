@@ -1727,7 +1727,7 @@ function redraw_fog() {
 			}
 			if (d[4] == 2) {
 				// reveal ALL!!!!!!!!!!
-				ctx.clearRect(0, 0, $("#scene_map").width()*window.CURRENT_SCENE_DATA.scale_factor, $("#scene_map").height()*window.CURRENT_SCENE_DATA.scale_factor);
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
 			}
 			if (d[4] == 3) {
 				// REVEAL POLYGON
