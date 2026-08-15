@@ -511,9 +511,36 @@ function open_grid_wizard_controls(scene_id, aligner1, aligner2, regrid = functi
 			}	
 		}
 		moveAligners(false, true);
-		console.log('horizontalMinorAdjustment');
 	});
-	form.append(gridType, verticalMinorAdjustment, horizontalMinorAdjustment)
+
+	let wizardRotateRow = $(`
+		<div id="wizardRotateRow" style="margin: 6px 0; display: flex; flex-direction: column; gap: 4px;">
+			<div style="display: flex; align-items: center; gap: 8px;">
+				<span style="font-weight: bold; font-size: 12px;">Rotate Map:</span>
+				<button type="button" id="wizardRotateCcw" class="avtt-btn" style="padding: 2px 8px; font-size: 12px; cursor: pointer;" title="Rotate Map 90° Counter-Clockwise">⟲ 90° CCW</button>
+				<button type="button" id="wizardRotateCw" class="avtt-btn" style="padding: 2px 8px; font-size: 12px; cursor: pointer;" title="Rotate Map 90° Clockwise">⟳ 90° CW</button>
+			</div>
+			<label style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+				<input type="checkbox" id="wizardKeepTokensUpright" checked style="width: auto; margin: 0;">
+				Keep token portraits upright
+			</label>
+		</div>
+	`);
+	wizardRotateRow.find('#wizardRotateCw').on('click', async function(e) {
+		e.preventDefault();
+		const keepUpright = wizardRotateRow.find('#wizardKeepTokensUpright').is(':checked');
+		await rotate_scene(window.CURRENT_SCENE_DATA.id, 90, keepUpright);
+		moveAligners(false, true, window.CURRENT_SCENE_DATA.gridType);
+		regrid();
+	});
+	wizardRotateRow.find('#wizardRotateCcw').on('click', async function(e) {
+		e.preventDefault();
+		const keepUpright = wizardRotateRow.find('#wizardKeepTokensUpright').is(':checked');
+		await rotate_scene(window.CURRENT_SCENE_DATA.id, -90, keepUpright);
+		moveAligners(false, true, window.CURRENT_SCENE_DATA.gridType);
+		regrid();
+	});
+	form.append(gridType, wizardRotateRow, verticalMinorAdjustment, horizontalMinorAdjustment)
 
 
 	let manual = $("<div id='manual_grid_data'/>");
@@ -1169,9 +1196,36 @@ function edit_scene_dialog(scene_id) {
 
 	
 	
-	dmMapRow.attr('title', `This map will be shown to the DM only. It is used for a nearly indentical map to the main map that had secrets embedded in it that you don't want your players to see. Both maps must have links.`)
 	form.append(playerMapRow)	
 	form.append(dmMapRow)
+
+	const rotateButtons = $(`
+		<div style="display:flex; flex-direction:column; gap:6px;">
+			<div style="display:inline-flex; gap:6px; align-items:center;">
+				<button type="button" id="btn_rotate_ccw" class="avtt-btn" style="padding: 2px 8px; font-size: 12px; cursor: pointer;" title="Rotate Map 90° Counter-Clockwise">⟲ Rotate 90° CCW</button>
+				<button type="button" id="btn_rotate_cw" class="avtt-btn" style="padding: 2px 8px; font-size: 12px; cursor: pointer;" title="Rotate Map 90° Clockwise">⟳ Rotate 90° CW</button>
+				<span id="rotate_status_label" style="font-size: 11px; margin-left: 6px; color: #555;">${scene.rotation || 0}°</span>
+			</div>
+			<label style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+				<input type="checkbox" id="chk_keep_tokens_upright" checked style="width: auto; margin: 0;">
+				Keep token portraits upright
+			</label>
+		</div>
+	`);
+	rotateButtons.find("#btn_rotate_cw").on("click", async function(e) {
+		e.preventDefault();
+		const keepUpright = rotateButtons.find("#chk_keep_tokens_upright").is(":checked");
+		await rotate_scene(scene.id || scene_id, 90, keepUpright);
+		edit_scene_dialog(scene_id);
+	});
+	rotateButtons.find("#btn_rotate_ccw").on("click", async function(e) {
+		e.preventDefault();
+		const keepUpright = rotateButtons.find("#chk_keep_tokens_upright").is(":checked");
+		await rotate_scene(scene.id || scene_id, -90, keepUpright);
+		edit_scene_dialog(scene_id);
+	});
+	form.append(form_row('rotate_scene', 'Rotate Map', rotateButtons));
+
 	// add a row but override the normal input with a toggle
 	form.append(form_row('dmMapToggle',
 			'Use DM Map',
@@ -1880,7 +1934,8 @@ function default_scene_data() {
 		itemType: ItemType.Scene,
 		parentId: RootFolder.Scenes.id,
 		gridType: 1,
-		scale_check: 1
+		scale_check: 1,
+		rotation: 0
 	};
 	const sceneCustomDefaults = window.SCENE_DEFAULT_SETTINGS;
 	if(sceneCustomDefaults != false){
@@ -2840,6 +2895,7 @@ function register_scene_row_context_menu() {
 						}
 					}
 				};
+
 				if (!selectedClicked && window.JOURNAL.notes[rowItem.id]) {
 					menuItems["openSceneNote"] = {
 						name: "Open Scene Note",

@@ -135,7 +135,7 @@ function change_zoom(newZoom, x, y, reset = false) {
 	}
 	else {
 		//this was changed from scrollIntoView to calculate the center and scrollTo as if loaded in an iframe it would scroll the parent window in firefox
-		const sceneMap = $("#scene_map")[0];
+		const sceneMap = $("#scene_map_container")[0] || $("#scene_map")[0];
 
 		const rect = sceneMap.getBoundingClientRect();
 		const sceneMapCenterX = Math.round(rect.left + rect.width / 2 + window.scrollX);
@@ -346,13 +346,13 @@ const throttledZoom = function(){
 */
 function get_reset_zoom() {
 	const w = $(window);
-	const scene_map = $("#scene_map");
-	const sf = window.CURRENT_SCENE_DATA.scale_factor;
+	const sf = window.CURRENT_SCENE_DATA?.scale_factor || 1;
 	const sidebar_open = ($('#hide_rightpanel').hasClass('point-right') && $('.ct-sidebar.ct-sidebar--hidden').length == 0) ? get_sidebar_width() : 0;
 	const wH = w.height();
-	const mH = scene_map.height()*sf;
-	const wW = w.width()-sidebar_open;
-	const mW = scene_map.width()*sf;
+	const { sceneWidth, sceneHeight } = getSceneMapSize();
+	const mH = (sceneHeight || $("#scene_map").height()) * sf;
+	const wW = w.width() - sidebar_open;
+	const mW = (sceneWidth || $("#scene_map").width()) * sf;
 
 	console.log(wH, mH, wW, mW);
 	return Math.min((wH / mH), (wW / mW));

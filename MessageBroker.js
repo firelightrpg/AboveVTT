@@ -1707,8 +1707,9 @@ class MessageBroker {
 			
 			
 			let isVideoEqual = window.CURRENT_SCENE_DATA.player_map_is_video == msg.data.player_map_is_video && window.CURRENT_SCENE_DATA.dm_map_is_video == msg.data.dm_map_is_video
+			let rotationEqual = (window.CURRENT_SCENE_DATA.rotation || 0) == (msg.data.rotation || 0)
 
-			let isSameScaleAndMaps = isCurrentScene && scaleFactorEqual && hppsEqual && vppsEqual && fpsqEqual && isVideoEqual && ((window.DM && dmMapEqual && dmMapToggleEqual) || (!window.DM && playerMapEqual))
+			let isSameScaleAndMaps = isCurrentScene && rotationEqual && scaleFactorEqual && hppsEqual && vppsEqual && fpsqEqual && isVideoEqual && ((window.DM && dmMapEqual && dmMapToggleEqual) || (!window.DM && playerMapEqual))
 			
 			const isSameTokenLight = window.CURRENT_SCENE_DATA.disableSceneVision == msg.data.disableSceneVision;																		
 			

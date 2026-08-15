@@ -1030,3 +1030,407 @@ function find_descendants_of_scene(scene, found = []) {
 	});
 	return found;
 }
+
+/**
+ * Rotates all scene data (map dimensions, grid, tokens, walls/drawings, fog reveals) by 90, 180, or 270 degrees.
+ * @param {Object} scene - The scene data object to modify in-place.
+ * @param {number} angle - Rotation angle (default 90 for clockwise, -90 or 270 for counter-clockwise, 180).
+ * @param {boolean} keepTokensUpright - Whether standard token portraits should remain upright (default true).
+ */
+function rotate_scene_data(scene, angle = 90, keepTokensUpright = true) {
+	if (!scene) return;
+
+	angle = ((angle % 360) + 360) % 360;
+	if (angle === 0) return;
+
+	const curRot = ((parseInt(scene.rotation) || 0) % 360 + 360) % 360;
+	let rawW = 0, rawH = 0;
+
+	const sceneMapEl = $("#scene_map");
+	if (sceneMapEl.length) {
+		const img = sceneMapEl[0];
+		rawW = img.naturalWidth || img.videoWidth || 0;
+		rawH = img.naturalHeight || img.videoHeight || 0;
+	}
+	if (!rawW || !rawH) {
+		const conv = parseFloat(scene.conversion || window.CURRENT_SCENE_DATA?.conversion || 1) || 1;
+		let w = parseFloat(scene.width) || parseFloat(window.CURRENT_SCENE_DATA?.width) || 0;
+		let h = parseFloat(scene.height) || parseFloat(window.CURRENT_SCENE_DATA?.height) || 0;
+		if (w && h) {
+			if (conv < 1 && (w <= 2500 || h <= 2500)) {
+				rawW = w / conv;
+				rawH = h / conv;
+			} else {
+				rawW = w;
+				rawH = h;
+			}
+		}
+	}
+	if (!rawW || !rawH) {
+		rawW = sceneMapEl.width() || 2000;
+		rawH = sceneMapEl.height() || 2000;
+	}
+	if (isNaN(rawW) || rawW <= 0) rawW = 2000;
+	if (isNaN(rawH) || rawH <= 0) rawH = 2000;
+
+	const conv = parseFloat(window.CURRENT_SCENE_DATA?.conversion || scene.conversion || 1) || 1;
+	let totalScale = 1;
+	if (window.CURRENT_SCENE_DATA?.scale_factor) {
+		totalScale = parseFloat(window.CURRENT_SCENE_DATA.scale_factor) * conv;
+	} else if (scene.scale_factor) {
+		totalScale = parseFloat(scene.scale_factor);
+	}
+	if (isNaN(totalScale) || totalScale <= 0) totalScale = 1;
+
+	let oldW = ((curRot === 90 || curRot === 270) ? rawH : rawW) * totalScale;
+	let oldH = ((curRot === 90 || curRot === 270) ? rawW : rawH) * totalScale;
+
+	if (isNaN(oldW) || oldW <= 0) oldW = 2000;
+	if (isNaN(oldH) || oldH <= 0) oldH = 2000;
+
+	console.log(`[AboveVTT Rotate] rotate_scene_data: angle=${angle}, curRot=${curRot}, rawW=${rawW}, rawH=${rawH}, totalScale=${totalScale}, oldW=${oldW}, oldH=${oldH}`);
+
+	function transformPoint(x, y) {
+		x = parseFloat(x) || 0;
+		y = parseFloat(y) || 0;
+		let nx = (angle === 90) ? (oldH - y) : (angle === 270) ? y : (angle === 180) ? (oldW - x) : x;
+		let ny = (angle === 90) ? x : (angle === 270) ? (oldW - x) : (angle === 180) ? (oldH - y) : y;
+		if (isNaN(nx)) nx = x;
+		if (isNaN(ny)) ny = y;
+		return { x: nx, y: ny };
+	}
+
+	function transformRect(x, y, w, h) {
+		x = parseFloat(x) || 0;
+		y = parseFloat(y) || 0;
+		w = parseFloat(w) || 0;
+		h = parseFloat(h) || 0;
+		let rx = (angle === 90) ? (oldH - y - h) : (angle === 270) ? y : (angle === 180) ? (oldW - x - w) : x;
+		let ry = (angle === 90) ? x : (angle === 270) ? (oldW - x - w) : (angle === 180) ? (oldH - y - h) : y;
+		let rw = (angle === 90 || angle === 270) ? h : w;
+		let rh = (angle === 90 || angle === 270) ? w : h;
+		if (isNaN(rx)) rx = x;
+		if (isNaN(ry)) ry = y;
+		if (isNaN(rw)) rw = w;
+		if (isNaN(rh)) rh = h;
+		return { x: rx, y: ry, w: rw, h: rh };
+	}
+
+	// 1. Map Dimensions & Rotation
+	scene.rotation = ((parseInt(scene.rotation) || 0) + angle) % 360;
+	if (angle === 90 || angle === 270) {
+		scene.width = oldH / totalScale;
+		scene.height = oldW / totalScale;
+	}
+
+	// 2. Grid Transformation
+	if (angle === 90 || angle === 270) {
+		const tempHpps = parseFloat(scene.hpps) || 60;
+		scene.hpps = parseFloat(scene.vpps) || 60;
+		scene.vpps = tempHpps;
+
+		const gridDimW = (curRot === 90 || curRot === 270) ? rawH : rawW;
+		const gridDimH = (curRot === 90 || curRot === 270) ? rawW : rawH;
+
+		if (angle === 90) {
+			scene.offsetx = ((gridDimH - (parseFloat(scene.offsety) || 0) - scene.vpps) % scene.hpps + scene.hpps) % scene.hpps;
+			scene.offsety = (((parseFloat(scene.offsetx) || 0) % scene.vpps) + scene.vpps) % scene.vpps;
+		} else {
+			scene.offsetx = (((parseFloat(scene.offsety) || 0) % scene.hpps) + scene.hpps) % scene.hpps;
+			scene.offsety = ((gridDimW - (parseFloat(scene.offsetx) || 0) - scene.hpps) % scene.vpps + scene.vpps) % scene.vpps;
+		}
+
+		if (scene.gridType == 2) scene.gridType = 3;
+		else if (scene.gridType == 3) scene.gridType = 2;
+
+		if (scene.scaleAdjustment) {
+			const tempAdj = scene.scaleAdjustment.x;
+			scene.scaleAdjustment.x = scene.scaleAdjustment.y;
+			scene.scaleAdjustment.y = tempAdj;
+		}
+	} else if (angle === 180) {
+		const gridDimW = (curRot === 90 || curRot === 270) ? rawH : rawW;
+		const gridDimH = (curRot === 90 || curRot === 270) ? rawW : rawH;
+		scene.offsetx = ((gridDimW - (parseFloat(scene.offsetx) || 0) - scene.hpps) % scene.hpps + scene.hpps) % scene.hpps;
+		scene.offsety = ((gridDimH - (parseFloat(scene.offsety) || 0) - scene.vpps) % scene.vpps + scene.vpps) % scene.vpps;
+	}
+
+	// 3. Tokens Transformation
+	if (scene.tokens) {
+		console.log(`[AboveVTT Rotate] Transforming ${Object.keys(scene.tokens).length} tokens`);
+		for (let id in scene.tokens) {
+			let tok = scene.tokens[id];
+			if (!tok) continue;
+			let opt = tok.options || tok;
+			let left = parseFloat(opt.left || tok.left || 0) || 0;
+			let top = parseFloat(opt.top || tok.top || 0) || 0;
+			let size = parseFloat(opt.size || tok.size || 60) || 60;
+			let tokW = parseFloat(opt.sizeWidth || (typeof tok.sizeWidth === 'function' ? tok.sizeWidth() : tok.sizeWidth) || size) || size;
+			let tokH = parseFloat(opt.sizeHeight || (typeof tok.sizeHeight === 'function' ? tok.sizeHeight() : tok.sizeHeight) || size) || size;
+
+			let rect = transformRect(left, top, tokW, tokH);
+			console.log(`[AboveVTT Rotate] Token ${id}: (${left}, ${top}) -> (${rect.x}, ${rect.y})`);
+			opt.left = `${Math.round(rect.x)}px`;
+			opt.top = `${Math.round(rect.y)}px`;
+			tok.left = opt.left;
+			tok.top = opt.top;
+
+			const isAoe = opt.isAoe || tok.isAoe || (typeof opt.imgsrc === 'string' && opt.imgsrc.includes('aoe')) || (typeof tok.imgsrc === 'string' && tok.imgsrc.includes('aoe'));
+
+			if (!keepTokensUpright || isAoe) {
+				let rot = (parseFloat(opt.rotation || tok.rotation || 0) + angle) % 360;
+				opt.rotation = rot;
+				tok.rotation = rot;
+			}
+
+			if (opt.heading !== undefined) opt.heading = (parseFloat(opt.heading) + angle) % 360;
+			if (opt.lightAngle !== undefined) opt.lightAngle = (parseFloat(opt.lightAngle) + angle) % 360;
+			if (opt.lightRotation !== undefined) opt.lightRotation = (parseFloat(opt.lightRotation) + angle) % 360;
+		}
+	}
+
+	// 4. Drawings, Walls, Elev, and Lights Transformation
+	function transformDrawings(drawingsList) {
+		if (!Array.isArray(drawingsList)) return;
+		console.log(`[AboveVTT Rotate] Transforming ${drawingsList.length} drawings`);
+		for (let i = 0; i < drawingsList.length; i++) {
+			let d = drawingsList[i];
+			if (!Array.isArray(d)) continue;
+			let shape = d[0];
+			let type = d[1];
+
+			if (shape === 'line' || (typeof shape === 'string' && shape.includes('line')) || type === 'wall' || (type === 'elev' && shape === 'line')) {
+				let pt1 = transformPoint(d[3], d[4]);
+				let pt2 = transformPoint(d[5], d[6]);
+				d[3] = pt1.x; d[4] = pt1.y; d[5] = pt2.x; d[6] = pt2.y;
+			} else if (shape === 'rect' || shape === 'square' || shape === 'eraser' || (type === 'light' && shape === 'rect')) {
+				let rect = transformRect(d[3], d[4], d[5], d[6]);
+				d[3] = rect.x; d[4] = rect.y; d[5] = rect.w; d[6] = rect.h;
+			} else if (shape === 'circle' || shape === 'arc' || (type === 'light' && (shape === 'circle' || shape === 'arc'))) {
+				let pt = transformPoint(d[3], d[4]);
+				d[3] = pt.x; d[4] = pt.y;
+			} else if (shape === 'polygon' || shape === 'poly' || shape === 'freehand') {
+				let points = d[3];
+				if (Array.isArray(points)) {
+					for (let p of points) {
+						if (p && typeof p === 'object') {
+							if ('x' in p && 'y' in p) {
+								let pt = transformPoint(p.x, p.y);
+								p.x = pt.x; p.y = pt.y;
+							} else if (Array.isArray(p) && p.length >= 2) {
+								let pt = transformPoint(p[0], p[1]);
+								p[0] = pt.x; p[1] = pt.y;
+							}
+						}
+					}
+				}
+			} else if (typeof shape === 'string' && shape.includes('text')) {
+				let rect = transformRect(d[1], d[2], d[3], d[4]);
+				d[1] = rect.x; d[2] = rect.y; d[3] = rect.w; d[4] = rect.h;
+			}
+		}
+	}
+	transformDrawings(scene.drawings);
+
+	// 5. Fog of War Reveals Transformation
+	function transformReveals(revealsList) {
+		if (!Array.isArray(revealsList)) return;
+		console.log(`[AboveVTT Rotate] Transforming ${revealsList.length} reveals`);
+		for (let i = 0; i < revealsList.length; i++) {
+			let d = revealsList[i];
+			if (!Array.isArray(d)) continue;
+			if (d.length === 4 || d[4] === 0) {
+				let rect = transformRect(d[0], d[1], d[2], d[3]);
+				d[0] = rect.x; d[1] = rect.y; d[2] = rect.w; d[3] = rect.h;
+			} else if (d[4] === 1) {
+				let pt = transformPoint(d[0], d[1]);
+				d[0] = pt.x; d[1] = pt.y;
+			} else if (d[4] === 3 || d[4] === 5 || d[4] === 6) {
+				let points = d[0];
+				if (Array.isArray(points)) {
+					for (let p of points) {
+						if (p && typeof p === 'object') {
+							if ('x' in p && 'y' in p) {
+								let pt = transformPoint(p.x, p.y);
+								p.x = pt.x; p.y = pt.y;
+							} else if (Array.isArray(p) && p.length >= 2) {
+								let pt = transformPoint(p[0], p[1]);
+								p[0] = pt.x; p[1] = pt.y;
+							}
+						}
+					}
+				}
+			} else if (d[4] === 4) {
+				let pt = transformPoint(d[0], d[1]);
+				d[0] = pt.x; d[1] = pt.y;
+			} else if (d[4] === 7) {
+				let points = d[0];
+				if (Array.isArray(points)) {
+					for (let p of points) {
+						if (Array.isArray(p) && p.length >= 2) {
+							let pt = transformPoint(p[0], p[1]);
+							p[0] = pt.x; p[1] = pt.y;
+						}
+					}
+				}
+			}
+		}
+	}
+	transformReveals(scene.reveals);
+}
+
+/**
+ * Rotates a scene by its ID, persists all changes (metadata, tokens, walls, fog), and updates display.
+ * @param {string|number} scene_id 
+ * @param {number} angle 
+ * @param {boolean} keepTokensUpright 
+ */
+async function rotate_scene(scene_id, angle = 90, keepTokensUpright = true) {
+	console.log('[AboveVTT Rotate] rotate_scene called:', { scene_id, angle, keepTokensUpright });
+	let sceneIndex = window.ScenesHandler.scenes.findIndex(s => s.id == scene_id || s.uuid == scene_id);
+	if (sceneIndex === -1 && typeof scene_id === 'number') sceneIndex = scene_id;
+	let scene = window.ScenesHandler.scenes[sceneIndex];
+	if (!scene && window.CURRENT_SCENE_DATA) scene = window.CURRENT_SCENE_DATA;
+	if (!scene) {
+		console.warn('[AboveVTT Rotate] No scene found for scene_id:', scene_id);
+		return;
+	}
+
+	const isActive = window.CURRENT_SCENE_DATA && (
+		window.CURRENT_SCENE_DATA.id == scene.id ||
+		(scene.uuid && window.CURRENT_SCENE_DATA.uuid == scene.uuid) ||
+		(scene.id && window.CURRENT_SCENE_DATA.uuid == scene.id) ||
+		(scene.uuid && window.CURRENT_SCENE_DATA.id == scene.uuid) ||
+		(window.CURRENT_SCENE_DATA.player_map && window.CURRENT_SCENE_DATA.player_map === scene.player_map)
+	);
+
+	console.log(`[AboveVTT Rotate] Scene matched. isActive=${isActive}, sceneIndex=${sceneIndex}`);
+
+	if (isActive) {
+		let fullScene = { ...window.CURRENT_SCENE_DATA };
+		let origSavedScale = fullScene.scale_factor;
+		if (sceneIndex !== -1 && window.ScenesHandler.scenes[sceneIndex]) {
+			const savedScene = window.ScenesHandler.scenes[sceneIndex];
+			if (savedScene.scale_factor !== undefined) origSavedScale = savedScene.scale_factor;
+			if (savedScene.hpps !== undefined) fullScene.hpps = savedScene.hpps;
+			if (savedScene.vpps !== undefined) fullScene.vpps = savedScene.vpps;
+			if (savedScene.offsetx !== undefined) fullScene.offsetx = savedScene.offsetx;
+			if (savedScene.offsety !== undefined) fullScene.offsety = savedScene.offsety;
+		}
+		fullScene.drawings = window.DRAWINGS ? $.extend(true, [], window.DRAWINGS) : (fullScene.drawings || []);
+		fullScene.reveals = window.REVEALED ? $.extend(true, [], window.REVEALED) : (fullScene.reveals || []);
+		fullScene.tokens = fullScene.tokens || {};
+		for (let id in window.TOKEN_OBJECTS) {
+			fullScene.tokens[id] = $.extend(true, {}, window.TOKEN_OBJECTS[id].options);
+		}
+
+		console.log('[AboveVTT Rotate] fullScene before rotate:', {
+			rotation: fullScene.rotation,
+			tokensCount: Object.keys(fullScene.tokens).length,
+			drawingsCount: fullScene.drawings.length,
+			revealsCount: fullScene.reveals.length
+		});
+
+		rotate_scene_data(fullScene, angle, keepTokensUpright);
+
+		// Update global runtime references
+		window.CURRENT_SCENE_DATA.rotation = fullScene.rotation;
+		window.CURRENT_SCENE_DATA.hpps = fullScene.hpps;
+		window.CURRENT_SCENE_DATA.vpps = fullScene.vpps;
+		window.CURRENT_SCENE_DATA.offsetx = fullScene.offsetx;
+		window.CURRENT_SCENE_DATA.offsety = fullScene.offsety;
+		window.CURRENT_SCENE_DATA.drawings = fullScene.drawings;
+		window.CURRENT_SCENE_DATA.reveals = fullScene.reveals;
+		window.CURRENT_SCENE_DATA.tokens = fullScene.tokens;
+		window.DRAWINGS = fullScene.drawings;
+		window.REVEALED = fullScene.reveals;
+
+		if (sceneIndex !== -1) {
+			window.ScenesHandler.scenes[sceneIndex] = {
+				...window.ScenesHandler.scenes[sceneIndex],
+				...fullScene,
+				scale_factor: origSavedScale,
+				drawings: [],
+				reveals: [],
+				tokens: {}
+			};
+		}
+
+		// Re-position every live token directly in DOM and sync message
+		const curScaleFactor = parseFloat(window.CURRENT_SCENE_DATA?.scale_factor) || 1;
+		for (let id in window.TOKEN_OBJECTS) {
+			let tok = window.TOKEN_OBJECTS[id];
+			if (fullScene.tokens[id]) {
+				tok.options = $.extend(true, {}, fullScene.tokens[id]);
+				if (window.CURRENT_SCENE_DATA.tokens) {
+					window.CURRENT_SCENE_DATA.tokens[id] = tok.options;
+				}
+				const el = $(`#tokens div[data-id='${id}']`);
+				console.log(`[AboveVTT Rotate] Updating DOM element for token ${id}: found=${el.length}, left=${tok.options.left}, top=${tok.options.top}`);
+				if (el.length) {
+					el.css({
+						left: `${parseFloat(tok.options.left) / curScaleFactor}px`,
+						top: `${parseFloat(tok.options.top) / curScaleFactor}px`
+					});
+					const rot = tok.options.rotation || 0;
+					el.find('.token-image').css('transform', `rotate(${rot}deg)`);
+				}
+				window.MB.sendMessage('custom/myVTT/token', tok.options, false, fullScene.id);
+			}
+		}
+
+		// Re-render canvas layers and map
+		console.log('[AboveVTT Rotate] Calling reset_canvas and redraw functions');
+		reset_canvas(false);
+		redraw_light_walls({ wallsChanged: true });
+		redraw_elev();
+		redraw_drawings();
+		redraw_text();
+		redraw_drawn_light();
+		redraw_light(true);
+		redraw_fog();
+		if (typeof redraw_grid === 'function') redraw_grid();
+		if (typeof draw_svg_grid === 'function') draw_svg_grid();
+
+		// Broadcast drawings and fog to peers
+		sync_drawings({ wallsChanged: true });
+		window.MB.sendMessage("custom/myVTT/fogdata", window.REVEALED);
+
+		await window.ScenesHandler.persist_scene(sceneIndex !== -1 ? sceneIndex : scene_id, false);
+		did_update_scenes();
+		try {
+			await AboveApi.migrateScenes(window.gameId, [fullScene]);
+		} catch (e) {
+			console.warn("AboveApi.migrateScenes rotate save:", e);
+		}
+	} else {
+		// Inactive scene
+		console.log('[AboveVTT Rotate] Rotating inactive scene via AboveApi');
+		try {
+			let fullSceneResponse = await AboveApi.getScene(scene.id || scene.uuid);
+			let fullScene = fullSceneResponse?.data ? Object.values(fullSceneResponse.data)[0] : fullSceneResponse;
+			if (fullScene) {
+				rotate_scene_data(fullScene, angle, keepTokensUpright);
+				window.ScenesHandler.scenes[sceneIndex] = {
+					...window.ScenesHandler.scenes[sceneIndex],
+					...fullScene,
+					drawings: [],
+					reveals: [],
+					tokens: {}
+				};
+				await window.ScenesHandler.persist_scene(sceneIndex, false);
+				did_update_scenes();
+				await AboveApi.migrateScenes(window.gameId, [fullScene]);
+			}
+		} catch (e) {
+			console.error("Error rotating inactive scene:", e);
+			rotate_scene_data(scene, angle, keepTokensUpright);
+			await window.ScenesHandler.persist_scene(sceneIndex, false);
+			did_update_scenes();
+		}
+	}
+}
+
+window.rotate_scene_data = rotate_scene_data;
+window.rotate_scene = rotate_scene;
+

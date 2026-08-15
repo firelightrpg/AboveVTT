@@ -1455,11 +1455,33 @@ function ctxScale(canvasid,  w, h, doNotScale=false){
 	return canvas;
 }
 
-function reset_canvas(apply_zoom=true) {
-	const sceneMapWidth = $("#scene_map").width();
-	const sceneMapHeight = $("#scene_map").height();
+function apply_scene_map_rotation(rotation, rawW, rawH) {
+	const sceneMap = $("#scene_map");
+	if (!sceneMap.length) return;
+	rotation = ((parseInt(rotation) || 0) % 360 + 360) % 360;
+	sceneMap.css({
+		'transform-origin': '0 0',
+		'position': 'absolute',
+		'top': '0',
+		'left': '0'
+	});
+	if (rotation === 90) {
+		sceneMap.css('transform', `translate(${rawH}px, 0px) rotate(90deg)`);
+	} else if (rotation === 180) {
+		sceneMap.css('transform', `translate(${rawW}px, ${rawH}px) rotate(180deg)`);
+	} else if (rotation === 270) {
+		sceneMap.css('transform', `translate(0px, ${rawW}px) rotate(270deg)`);
+	} else {
+		sceneMap.css('transform', 'none');
+	}
+}
 
-	if (!sceneMapWidth || !sceneMapHeight) {
+function reset_canvas(apply_zoom=true) {
+	const sceneMapEl = $("#scene_map");
+	let rawMapWidth = sceneMapEl.width();
+	let rawMapHeight = sceneMapEl.height();
+
+	if (!rawMapWidth || !rawMapHeight) {
 		showErrorMessage("Error loading scene.", `<p>Possible issues:</p>• The scene map link may be blank<br>• If using a video map ensure the "video map" toggle is enabled<br>• The file may not be publicly accessible (check share settings on host)<br>• The host may have rate limits on file access`);
 		set_default_vttwrapper_size();
 		$('#loadingStyles').remove();
@@ -1467,6 +1489,18 @@ function reset_canvas(apply_zoom=true) {
 		remove_loading_overlay();
 		delete window.LOADING;
 		return false;
+	}
+
+	const rotation = ((parseInt(window.CURRENT_SCENE_DATA?.rotation) || 0) % 360 + 360) % 360;
+	apply_scene_map_rotation(rotation, rawMapWidth, rawMapHeight);
+
+	let sceneMapWidth = (rotation === 90 || rotation === 270) ? rawMapHeight : rawMapWidth;
+	let sceneMapHeight = (rotation === 90 || rotation === 270) ? rawMapWidth : rawMapHeight;
+	console.log('[AboveVTT Rotate] reset_canvas:', { rotation, rawMapWidth, rawMapHeight, sceneMapWidth, sceneMapHeight });
+
+	if (window.CURRENT_SCENE_DATA) {
+		window.CURRENT_SCENE_DATA.width = sceneMapWidth;
+		window.CURRENT_SCENE_DATA.height = sceneMapHeight;
 	}
 
 	$('#darkness_layer').css({"width": sceneMapWidth, "height": sceneMapHeight});
