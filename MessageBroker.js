@@ -414,11 +414,8 @@ class MessageBroker {
 	}
 
 	async rehydrate_persisted_chats() {
-		if (typeof get_avtt_setting_value === "function" && get_avtt_setting_value("persistChatToDDB") === false) {
-			return;
-		}
 		const self = this;
-		const items = $("ol>li[class*='GameLogEntry']:not(.avtt-rehydrated-chat)");
+		const items = $("ol[class*='GameLog'] > li:not(.avtt-rehydrated-chat), ol > li[class*='GameLogEntry']:not(.avtt-rehydrated-chat), .glc-game-log ol > li:not(.avtt-rehydrated-chat), [class*='GameLog'] li:not(.avtt-rehydrated-chat)");
 		if (!items.length) return;
 
 		for (let i = 0; i < items.length; i++) {

@@ -32,6 +32,16 @@ $(function() {
   }
 
   window.EXPERIMENTAL_SETTINGS = {};
+  if (typeof localStorage !== "undefined") {
+    try {
+      const gMatch = window.location.pathname.match(/\/campaigns\/([0-9]+)/i);
+      const gid = gMatch ? gMatch[1] : "";
+      const stored = (gid && localStorage.getItem("ExperimentalSettings" + gid)) || localStorage.getItem("ExperimentalSettingsGlobal");
+      if (stored) {
+        window.EXPERIMENTAL_SETTINGS = JSON.parse(stored) || {};
+      }
+    } catch (e) {}
+  }
   window.EXTENSION_PATH = $("#extensionpath").attr('data-path');
   window.AVTT_VERSION = $("#avttversion").attr('data-version');
   $("head").append('<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons"></link>');
