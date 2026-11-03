@@ -139,8 +139,10 @@ const debounceHandleInjected = mydebounce(() => {
 				let img = li.find(".magnify");
 				for (let i = 0; i < img.length; i++) {
 					if ($(img[i]).is('img')) {
-						$(img[i]).magnificPopup({ type: 'image', closeOnContentClick: true });
-						img[i].onload = () => {
+						if (typeof $(img[i]).magnificPopup === 'function') {
+							$(img[i]).magnificPopup({ type: 'image', closeOnContentClick: true });
+						}
+						const showImg = () => {
 							if (img[i].naturalWidth > 0) {
 								$(img[i]).css({
 									'display': 'block',
@@ -150,7 +152,11 @@ const debounceHandleInjected = mydebounce(() => {
 							}
 							$(img[i]).attr('href', img[i].src);
 							newheight = li.find('>[class*="MessageContainer-Flex"]').height();
-							li.height(newheight);
+							if (newheight) li.height(newheight);
+						};
+						img[i].onload = showImg;
+						if (img[i].complete && img[i].naturalWidth > 0) {
+							showImg();
 						}
 						$(img[i]).off('error').on("error", function (e) {
 							let el = $(e.target)
@@ -427,21 +433,24 @@ class MessageBroker {
 				continue;
 			}
 			let headerText = "";
+			const getRaw = (el) => (el[0]?.textContent || el.text() || "").trim();
+			const isChatOrWhisper = (s) => /^\[chat\]/i.test(s) || /^\[whisper/i.test(s);
+
 			// Target the specific title span first to avoid DDB's trailing colon separator
 			let headerEl = li.find(".aboveDiceOutput, [class*='-Heading'], [class*='-Action'], [class*='-Line-Title-'] span:first-child, [class*='Line-Title'] span:first-child").first();
 			if (headerEl.length > 0) {
-				headerText = headerEl.text().trim();
+				headerText = getRaw(headerEl);
 			}
-			if (!headerText || (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper"))) {
+			if (!headerText || !isChatOrWhisper(headerText)) {
 				headerEl = li.find("[class*='-Heading'], [class*='-Action'], [class*='Line-Title'], [class*='-RollTitle']").first();
 				if (headerEl.length > 0) {
-					headerText = headerEl.text().trim();
+					headerText = getRaw(headerEl);
 				}
 			}
-			if (!headerText || (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper"))) {
+			if (!headerText || !isChatOrWhisper(headerText)) {
 				li.find("span, h2, h3, h4, div").each(function () {
-					const t = $(this).text().trim();
-					if (t.startsWith("[Chat]") || t.startsWith("[Whisper")) {
+					const t = getRaw($(this));
+					if (isChatOrWhisper(t)) {
 						headerText = t;
 						headerEl = $(this);
 						return false;
@@ -449,7 +458,7 @@ class MessageBroker {
 				});
 			}
 
-			if (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper")) {
+			if (!isChatOrWhisper(headerText)) {
 				continue;
 			}
 
@@ -457,10 +466,10 @@ class MessageBroker {
 
 			let whisper = "";
 			let messageText = "";
-			if (headerText.startsWith("[Chat]")) {
-				messageText = headerText.slice(6).trim();
-			} else if (headerText.startsWith("[Whisper")) {
-				const match = headerText.match(/^\[Whisper(?:\s+to\s+([^\]]+))?\]\s*(.*)$/i);
+			if (/^\[chat\]/i.test(headerText)) {
+				messageText = headerText.replace(/^\[chat\]\s*/i, "").trim();
+			} else if (/^\[whisper/i.test(headerText)) {
+				const match = headerText.match(/^\[whisper(?:\s+to\s+([^\]]+))?\]\s*(.*)$/i);
 				if (match) {
 					whisper = match[1] || "DM";
 					messageText = match[2] || "";
@@ -523,10 +532,9 @@ class MessageBroker {
 						const newHeight = li.find('>[class*="MessageContainer-Flex"]').height();
 						if (newHeight) li.height(newHeight);
 					};
-					if (imgDom.naturalWidth > 0) {
+					imgDom.onload = showImg;
+					if (imgDom.complete && imgDom.naturalWidth > 0) {
 						showImg();
-					} else {
-						imgDom.onload = showImg;
 					}
 				} else if (el.is("video")) {
 					if (typeof el.magnificPopup === "function") {
