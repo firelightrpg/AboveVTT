@@ -458,6 +458,7 @@ function avtt_settings(campaignSettings = false) {
 				{ value: false, label: "Ephemeral", description: `Default behavior. AboveVTT chat is broadcast live via websocket to active clients but not saved to D&D Beyond's database.` }
 			],
 			defaultValue: false,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -469,6 +470,7 @@ function avtt_settings(campaignSettings = false) {
 				{ value: false, label: "Default", description: `Use the default public PeerJS cloud server (0.peerjs.com).` }
 			],
 			defaultValue: false,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -476,6 +478,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "PeerJS Host",
 			type: "text",
 			defaultValue: "wyrmbox.com",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -483,6 +486,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "PeerJS Port",
 			type: "text",
 			defaultValue: "443",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -490,6 +494,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "PeerJS Path",
 			type: "text",
 			defaultValue: "/peerjs",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -497,6 +502,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "Custom TURN/STUN Server URL",
 			type: "text",
 			defaultValue: "",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -504,6 +510,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "TURN Username",
 			type: "text",
 			defaultValue: "",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -511,6 +518,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "TURN Credential",
 			type: "text",
 			defaultValue: "",
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -519,6 +527,7 @@ function avtt_settings(campaignSettings = false) {
 			type: "text",
 			defaultValue: "",
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -531,6 +540,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: true,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -543,6 +553,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: true,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -555,6 +566,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: false,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	if(!campaignSettings){
@@ -1174,6 +1186,15 @@ function get_avtt_setting_value(name) {
 			setValue = window.EXPERIMENTAL_SETTINGS[name];
 			if (setValue !== undefined) {
 				return setValue;
+			}
+			if (get_avtt_setting_is_global(name)) {
+				try {
+					const glob = JSON.parse(localStorage.getItem("ExperimentalSettingsGlobal") || "{}");
+					if (glob[name] !== undefined) {
+						window.EXPERIMENTAL_SETTINGS[name] = glob[name];
+						return glob[name];
+					}
+				} catch (e) {}
 			}
 			return get_avtt_setting_default_value(name);
 	}

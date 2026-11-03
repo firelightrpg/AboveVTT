@@ -36,10 +36,9 @@ $(function() {
     try {
       const gMatch = window.location.pathname.match(/\/campaigns\/([0-9]+)/i);
       const gid = gMatch ? gMatch[1] : "";
-      const stored = (gid && localStorage.getItem("ExperimentalSettings" + gid)) || localStorage.getItem("ExperimentalSettingsGlobal");
-      if (stored) {
-        window.EXPERIMENTAL_SETTINGS = JSON.parse(stored) || {};
-      }
+      const glob = JSON.parse(localStorage.getItem("ExperimentalSettingsGlobal") || "{}");
+      const camp = gid ? JSON.parse(localStorage.getItem("ExperimentalSettings" + gid) || "{}") : {};
+      window.EXPERIMENTAL_SETTINGS = $.extend({}, glob, camp);
     } catch (e) {}
   }
   window.EXTENSION_PATH = $("#extensionpath").attr('data-path');
