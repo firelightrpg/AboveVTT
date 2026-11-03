@@ -431,6 +431,9 @@ function get_active_worker_keys() {
  * @returns
  */
 function inject_chat_buttons() {
+  if (window.MB && typeof window.MB.rehydrate_persisted_chats === 'function') {
+    window.MB.rehydrate_persisted_chats();
+  }
   const gameLog = $(".glc-game-log");
   if (gameLog.find("#chat-text").length > 0) {
     // make sure we only ever inject these once. This gets called a lot on the character sheet which is intentional, but just in case we accidentally call it too many times, let's log it, and return
@@ -605,7 +608,12 @@ Other Commands:
 
   if (window.diceResultsObserver)
     window.diceResultsObserver.disconnect();
+  const debounceRehydrateChats = typeof mydebounce === 'function' 
+    ? mydebounce(() => window.MB?.rehydrate_persisted_chats?.(), 100)
+    : () => window.MB?.rehydrate_persisted_chats?.();
+
   window.diceResultsObserver = new MutationObserver(function (mutations) {
+    debounceRehydrateChats();
     mutations.every((mutation) => {
       const added = $(mutation.addedNodes);
       const notationNode = added.is('[class*="-Line-Notation"]') ? added : added.find('[class*="-Line-Notation"]');

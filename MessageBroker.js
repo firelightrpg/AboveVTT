@@ -407,7 +407,135 @@ class MessageBroker {
 		for (let i = 0; i < window.MB.chat_message_history.length; i++) {
 			window.MB.chat_pending_messages.push(window.MB.chat_message_history[i]);
 		}
-		window.MB.handle_injected_data(window.MB.chat_pending_messages[0], false);
+		if (window.MB.chat_pending_messages.length > 0) {
+			window.MB.handle_injected_data(window.MB.chat_pending_messages[0], false);
+		}
+		this.rehydrate_persisted_chats();
+	}
+
+	async rehydrate_persisted_chats() {
+		if (typeof get_avtt_setting_value === "function" && get_avtt_setting_value("persistChatToDDB") === false) {
+			return;
+		}
+		const self = this;
+		const items = $("ol>li[class*='GameLogEntry']:not(.avtt-rehydrated-chat)");
+		if (!items.length) return;
+
+		for (let i = 0; i < items.length; i++) {
+			const li = $(items[i]);
+			let headerText = "";
+			let headerEl = li.find("[class*='-Heading'], [class*='-Action'], [class*='Line-Title'], [class*='-RollTitle']").first();
+			if (headerEl.length > 0) {
+				headerText = headerEl.text().trim();
+			}
+			if (!headerText || (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper"))) {
+				li.find("span, h2, h3, h4, div").each(function () {
+					const t = $(this).text().trim();
+					if (t.startsWith("[Chat]") || t.startsWith("[Whisper")) {
+						headerText = t;
+						headerEl = $(this);
+						return false;
+					}
+				});
+			}
+
+			if (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper")) {
+				continue;
+			}
+
+			li.addClass("avtt-rehydrated-chat");
+
+			let whisper = "";
+			let messageText = "";
+			if (headerText.startsWith("[Chat]")) {
+				messageText = headerText.slice(6).trim();
+			} else if (headerText.startsWith("[Whisper")) {
+				const match = headerText.match(/^\[Whisper(?:\s+to\s+([^\]]+))?\]\s*(.*)$/i);
+				if (match) {
+					whisper = match[1] || "DM";
+					messageText = match[2] || "";
+				} else {
+					messageText = headerText;
+				}
+			}
+
+			messageText = messageText.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9]?$/i, "").trim();
+
+			const senderEl = li.find("[class*='-Sender'], [class*='Sender']").first();
+			const player = senderEl.text().trim() || "AboveVTT";
+			const avatarImg = li.find("p[role='img'] img, [class*='-Avatar'] img, [class*='Avatar'] img").first();
+			let img = avatarImg.attr("src") || window.PLAYER_IMG || "";
+
+			let renderedText = messageText;
+			if (typeof validateUrl === "function" && validateUrl(messageText)) {
+				const mediaUrl = typeof parse_img === "function" ? await parse_img(messageText) : messageText;
+				renderedText = `
+					<a class='chat-link' href='${messageText}' target='_blank' rel='noopener noreferrer'>${messageText}</a>
+					<img width=100% class='magnify' src='${mediaUrl}' href='${mediaUrl}' alt='Chat Image' style='display: none'/>
+					<video width=100% class='magnify' autoplay muted loop src='${mediaUrl}' href='${mediaUrl}' alt='Chat Video' style='display: none'/>
+				`;
+			} else {
+				renderedText = `<div class="custom-gamelog-message">${messageText}</div>`;
+			}
+
+			const chatData = {
+				player: player,
+				img: img,
+				text: renderedText,
+				whisper: whisper
+			};
+
+			const isLocal = player === window.PLAYER_NAME;
+			const newLi = self.convertChat(chatData, isLocal);
+			if (newLi.html() === "") {
+				li.css("display", "none");
+			} else {
+				li.html(newLi.html());
+			}
+
+			const magnifyEls = li.find(".magnify");
+			for (let m = 0; m < magnifyEls.length; m++) {
+				const el = $(magnifyEls[m]);
+				if (el.is("img")) {
+					if (typeof el.magnificPopup === "function") {
+						el.magnificPopup({ type: "image", closeOnContentClick: true });
+					}
+					const imgDom = magnifyEls[m];
+					const showImg = () => {
+						if (imgDom.naturalWidth > 0) {
+							el.css({ display: "block", width: "100%" });
+							li.find(".chat-link").css("display", "none");
+						}
+						el.attr("href", el.attr("src"));
+						const newHeight = li.find('>[class*="MessageContainer-Flex"]').height();
+						if (newHeight) li.height(newHeight);
+					};
+					if (imgDom.naturalWidth > 0) {
+						showImg();
+					} else {
+						imgDom.onload = showImg;
+					}
+				} else if (el.is("video")) {
+					if (typeof el.magnificPopup === "function") {
+						el.magnificPopup({
+							type: "iframe",
+							closeOnContentClick: true,
+							callbacks: {
+								elementParse: function (item) {
+									item.src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(item.src).replace(/'/g, "%27")}`;
+								}
+							}
+						});
+					}
+					magnifyEls[m].addEventListener("loadeddata", function () {
+						if (magnifyEls[m].videoWidth > 0) {
+							el.css({ display: "block", width: "100%" });
+							li.find(".chat-link").css("display", "none");
+						}
+					});
+				}
+			}
+		}
 	}
 
 	// we keep a list of the 100 most recent messages so we can re-inject them when DDB re-injects the gamelog on the characters page.
@@ -1693,13 +1821,25 @@ class MessageBroker {
 
 
 		const isChatEnabled = is_encounters_page() || is_characters_page() || is_campaign_page();
-		const imageUrl = new URL(data.img);
-		const decodedPath = decodeURIComponent(imageUrl.pathname);
-		imageUrl.pathname = encodeURI(decodedPath);
+		let imgString = "";
+		try {
+			const imageUrl = new URL(data.img);
+			const decodedPath = decodeURIComponent(imageUrl.pathname);
+			imageUrl.pathname = encodeURI(decodedPath);
+			imgString = imageUrl.toString();
+		} catch (e) {
+			imgString = data.img || "";
+		}
 
 		//Security logic to prevent content being sent which can execute JavaScript.
-		let image = `<img class="${isChatEnabled ? 'tss-1e4a2a1-AvatarPortrait' : 'Avatar_AvatarPortrait__3cq6B'}" src="${imageUrl.toString()}" alt="">`;
-		let player = `<span class="tss-1tj70tb-Sender" title="${data.player}">${data.player}</span>`;
+		let image = `<img class="${isChatEnabled ? 'tss-1e4a2a1-AvatarPortrait' : 'Avatar_AvatarPortrait__3cq6B'}" src="${imgString}" alt="">`;
+		let whisperBadge = "";
+		if (data.whisper) {
+			const toSelf = (data.whisper === window.PLAYER_NAME || data.whisper === window.myUser) && data.player === window.PLAYER_NAME;
+			const targetText = toSelf ? "Self" : data.whisper;
+			whisperBadge = ` <span class="above-vtt-roll-whisper" style="color: #9c27b0; font-size: 11px; margin-left: 6px; font-weight: normal;">(Whisper to ${targetText})</span>`;
+		}
+		let player = `<span class="tss-1tj70tb-Sender" title="${data.player}">${data.player}${whisperBadge}</span>`;
 
 		player = DOMPurify.sanitize( player,{ALLOWED_TAGS: ['span']});
 		image = DOMPurify.sanitize( image,{ALLOWED_TAGS: ['img']});
