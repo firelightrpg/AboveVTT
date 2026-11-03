@@ -186,7 +186,6 @@
         const scripts = pgType === "char" ?
                 isIframe ? ["DDBMb.js", ...avttCharacterScripts] : avttCharacterScripts               
               : pgType === "gamelog" ? [
-                  "jquery-3.6.0.min.js",
                   "jquery.magnific-popup.min.js",
                   "purify.min.js",
                   "environment.js",

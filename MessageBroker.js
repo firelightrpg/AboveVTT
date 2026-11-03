@@ -17,7 +17,7 @@ const debounceHandleInjected = mydebounce(() => {
 
 		let found=false;
 		$(self.diceMessageSelector).each(async function(){
-			if($(this).text()==injection_id){
+			if($(this).text().trim().toLowerCase() == (injection_id || "").toLowerCase()){
 				found=true;
 				let li = $(this).closest("li");
 				let oldheight=li.height();
@@ -140,7 +140,9 @@ const debounceHandleInjected = mydebounce(() => {
 				for (let i = 0; i < img.length; i++) {
 					if ($(img[i]).is('img')) {
 						if (typeof $(img[i]).magnificPopup === 'function') {
-							$(img[i]).magnificPopup({ type: 'image', closeOnContentClick: true });
+							try {
+								$(img[i]).magnificPopup({ type: 'image', closeOnContentClick: true });
+							} catch (e) {}
 						}
 						const showImg = () => {
 							if (img[i].naturalWidth > 0) {
@@ -155,6 +157,7 @@ const debounceHandleInjected = mydebounce(() => {
 							if (newheight) li.height(newheight);
 						};
 						img[i].onload = showImg;
+						img[i].addEventListener('load', showImg);
 						if (img[i].complete && img[i].naturalWidth > 0) {
 							showImg();
 						}
@@ -518,7 +521,9 @@ class MessageBroker {
 				const el = $(magnifyEls[m]);
 				if (el.is("img")) {
 					if (typeof el.magnificPopup === "function") {
-						el.magnificPopup({ type: "image", closeOnContentClick: true });
+						try {
+							el.magnificPopup({ type: "image", closeOnContentClick: true });
+						} catch (e) {}
 					}
 					const imgDom = magnifyEls[m];
 					const showImg = () => {
@@ -531,20 +536,23 @@ class MessageBroker {
 						if (newHeight) li.height(newHeight);
 					};
 					imgDom.onload = showImg;
+					imgDom.addEventListener("load", showImg);
 					if (imgDom.complete && imgDom.naturalWidth > 0) {
 						showImg();
 					}
 				} else if (el.is("video")) {
 					if (typeof el.magnificPopup === "function") {
-						el.magnificPopup({
-							type: "iframe",
-							closeOnContentClick: true,
-							callbacks: {
-								elementParse: function (item) {
-									item.src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(item.src).replace(/'/g, "%27")}`;
+						try {
+							el.magnificPopup({
+								type: "iframe",
+								closeOnContentClick: true,
+								callbacks: {
+									elementParse: function (item) {
+										item.src = `${window.EXTENSION_PATH}iframe.html?src=${encodeURIComponent(item.src).replace(/'/g, "%27")}`;
+									}
 								}
-							}
-						});
+							});
+						} catch (e) {}
 					}
 					magnifyEls[m].addEventListener("loadeddata", function () {
 						if (magnifyEls[m].videoWidth > 0) {
