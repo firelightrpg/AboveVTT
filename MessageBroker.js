@@ -1995,10 +1995,25 @@ class MessageBroker {
 
 	async inject_chat(injected_data) {
 		let msgid = this.chat_id + this.chat_counter++;
+
+		// Generate a clean plaintext preview for unaugmented D&D Beyond log readers
+		let preview = "";
+		if (injected_data?.text) {
+			const tempDiv = document.createElement("div");
+			tempDiv.innerHTML = injected_data.text;
+			preview = (tempDiv.textContent || tempDiv.innerText || "").trim().replace(/\s+/g, " ");
+			if (preview.length > 80) {
+				preview = preview.slice(0, 77) + "...";
+			}
+		}
+		const actionTitle = injected_data?.whisper 
+			? `[Whisper to ${injected_data.whisper}] ${preview}`
+			: (preview ? `[Chat] ${preview}` : "ABOVETT");
+
 		let data = {
 			player_name: window.PLAYER_NAME,
 			injected_data: injected_data,
-			"action": "ABOVETT",
+			"action": actionTitle,
 			"rolls": [
 				{
 					"diceNotation": {
