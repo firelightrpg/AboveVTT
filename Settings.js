@@ -448,7 +448,51 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: false,
 			class: 'stream'
-	})
+	});
+	settings.push({
+			name: "discordWebhookUrl",
+			label: "Discord Webhook URL",
+			type: "text",
+			defaultValue: "",
+			dmOnly: true,
+			class: 'stream'
+	});
+	settings.push({
+			name: "discordRelayRolls",
+			label: "Relay Rolls to Discord",
+			type: "toggle",
+			options: [
+				{ value: true, label: "Enabled", description: "Relay dice rolls, attacks, and checks to your Discord channel via webhook." },
+				{ value: false, label: "Disabled", description: "Do not relay dice rolls to Discord." }
+			],
+			defaultValue: true,
+			dmOnly: true,
+			class: 'stream'
+	});
+	settings.push({
+			name: "discordRelayChat",
+			label: "Relay Chat to Discord",
+			type: "toggle",
+			options: [
+				{ value: true, label: "Enabled", description: "Relay in-character chatter and AboveVTT messages to your Discord channel via webhook." },
+				{ value: false, label: "Disabled", description: "Do not relay chat messages to Discord." }
+			],
+			defaultValue: true,
+			dmOnly: true,
+			class: 'stream'
+	});
+	settings.push({
+			name: "discordRelayWhispers",
+			label: "Relay Whispers to Discord",
+			type: "toggle",
+			options: [
+				{ value: true, label: "Enabled", description: "Relay private whispers to Discord (marked as whispers). Caution: visible to anyone in that channel." },
+				{ value: false, label: "Disabled", description: "Default. Keep private whispers within AboveVTT." }
+			],
+			defaultValue: false,
+			dmOnly: true,
+			class: 'stream'
+	});
 	if(!campaignSettings){
 		settings.push({	
 			name: "gridZoomConversion",
