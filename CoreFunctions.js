@@ -66,55 +66,67 @@ const charactersPageRegex = /\/characters\/\d+/;
 const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication');
 
 function get_avtt_peerjs_options() {
-  if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
+  try {
+    if (typeof get_avtt_setting_value !== 'function') {
+      return undefined;
+    }
+    if (!get_avtt_setting_value('customPeerEnabled')) {
+      return undefined;
+    }
+    const host = get_avtt_setting_value('customPeerHost') || '0.peerjs.com';
+    const rawPort = get_avtt_setting_value('customPeerPort') || '443';
+    const port = parseInt(rawPort, 10) || 443;
+    const path = get_avtt_setting_value('customPeerPath') || '/';
+    const secure = (port === 443 || window.location.protocol === 'https:');
+
+    const options = {
+      host: host,
+      port: port,
+      path: path,
+      secure: secure
+    };
+
+    const turnServer = get_avtt_setting_value('customTurnServer');
+    if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
+      const turnUser = get_avtt_setting_value('customTurnUser');
+      const turnPass = get_avtt_setting_value('customTurnPass');
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ];
+      const turnEntry = { urls: turnServer.trim() };
+      if (turnUser && typeof turnUser === 'string' && turnUser.trim() !== '') {
+        turnEntry.username = turnUser.trim();
+      }
+      if (turnPass && typeof turnPass === 'string' && turnPass.trim() !== '') {
+        turnEntry.credential = turnPass.trim();
+      }
+      iceServers.push(turnEntry);
+      options.config = { iceServers: iceServers };
+    }
+
+    return options;
+  } catch (err) {
+    console.debug('[AboveVTT] get_avtt_peerjs_options fallback:', err);
     return undefined;
   }
-  const host = get_avtt_setting_value('customPeerHost') || '0.peerjs.com';
-  const rawPort = get_avtt_setting_value('customPeerPort') || '443';
-  const port = parseInt(rawPort, 10) || 443;
-  const path = get_avtt_setting_value('customPeerPath') || '/';
-  const secure = (port === 443 || window.location.protocol === 'https:');
-
-  const options = {
-    host: host,
-    port: port,
-    path: path,
-    secure: secure
-  };
-
-  const turnServer = get_avtt_setting_value('customTurnServer');
-  if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
-    const turnUser = get_avtt_setting_value('customTurnUser');
-    const turnPass = get_avtt_setting_value('customTurnPass');
-    const iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ];
-    const turnEntry = { urls: turnServer.trim() };
-    if (turnUser && typeof turnUser === 'string' && turnUser.trim() !== '') {
-      turnEntry.username = turnUser.trim();
-    }
-    if (turnPass && typeof turnPass === 'string' && turnPass.trim() !== '') {
-      turnEntry.credential = turnPass.trim();
-    }
-    iceServers.push(turnEntry);
-    options.config = { iceServers: iceServers };
-  }
-
-  return options;
 }
 
 window.isDiscordRelayLeader = false;
 
 function init_discord_relay_lock() {
-  if (navigator?.locks?.request) {
-    navigator.locks.request('abovevtt_discord_relay_leader', async (lock) => {
+  try {
+    if (navigator?.locks?.request) {
+      navigator.locks.request('abovevtt_discord_relay_leader', async (lock) => {
+        window.isDiscordRelayLeader = true;
+        // Keep lock open for lifetime of tab
+        await new Promise(() => {});
+      }).catch(() => {
+        window.isDiscordRelayLeader = false;
+      });
+    } else {
       window.isDiscordRelayLeader = true;
-      // Keep lock open for lifetime of tab
-      await new Promise(() => {});
-    }).catch(() => {
-      window.isDiscordRelayLeader = false;
-    });
-  } else {
+    }
+  } catch (err) {
     window.isDiscordRelayLeader = true;
   }
 }
@@ -218,7 +230,6 @@ function relay_roll_to_discord(msg) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
-}
 }
 
 function isIOS() {
