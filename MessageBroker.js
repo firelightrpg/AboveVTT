@@ -28,6 +28,7 @@ const debounceHandleInjected = mydebounce(() => {
 				} 
 				
 			 	li.html(newlihtml);
+				li.addClass("avtt-rehydrated-chat");
 				if(window.JOURNAL){
 					await window.JOURNAL.translateHtmlAndBlocks(li);
 					add_journal_roll_buttons(li);
@@ -420,6 +421,11 @@ class MessageBroker {
 
 		for (let i = 0; i < items.length; i++) {
 			const li = $(items[i]);
+			// Skip elements already rendered by live websocket handler
+			if (li.hasClass("avtt-rehydrated-chat") || li.find(".custom-gamelog-message, [class*='-Message-Collapsed-'], .above-vtt-roll-whisper").length > 0) {
+				li.addClass("avtt-rehydrated-chat");
+				continue;
+			}
 			let headerText = "";
 			// Target the specific title span first to avoid DDB's trailing colon separator
 			let headerEl = li.find(".aboveDiceOutput, [class*='-Heading'], [class*='-Action'], [class*='-Line-Title-'] span:first-child, [class*='Line-Title'] span:first-child").first();
@@ -2149,8 +2155,8 @@ class MessageBroker {
 			const tempDiv = document.createElement("div");
 			tempDiv.innerHTML = injected_data.text;
 			preview = (tempDiv.textContent || tempDiv.innerText || "").trim().replace(/\s+/g, " ");
-			if (preview.length > 80) {
-				preview = preview.slice(0, 77) + "...";
+			if (preview.length > 500) {
+				preview = preview.slice(0, 497) + "...";
 			}
 		}
 		const actionTitle = injected_data?.whisper 
