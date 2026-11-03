@@ -28,7 +28,7 @@ const debounceHandleInjected = mydebounce(() => {
 				} 
 				
 			 	li.html(newlihtml);
-				li.addClass("avtt-rehydrated-chat");
+				li.addClass("avtt-chat-hydrated");
 				if(window.JOURNAL){
 					await window.JOURNAL.translateHtmlAndBlocks(li);
 					add_journal_roll_buttons(li);
@@ -422,14 +422,12 @@ class MessageBroker {
 
 	async rehydrate_persisted_chats() {
 		const self = this;
-		const items = $("ol[class*='GameLog'] > li:not(.avtt-rehydrated-chat), ol > li[class*='GameLogEntry']:not(.avtt-rehydrated-chat), .glc-game-log ol > li:not(.avtt-rehydrated-chat), [class*='GameLog'] li:not(.avtt-rehydrated-chat)");
+		const items = $("ol[class*='GameLog'] > li:not(.avtt-chat-hydrated), ol > li[class*='GameLogEntry']:not(.avtt-chat-hydrated), .glc-game-log ol > li:not(.avtt-chat-hydrated), [class*='GameLog'] li:not(.avtt-chat-hydrated)");
 		if (!items.length) return;
 
 		for (let i = 0; i < items.length; i++) {
 			const li = $(items[i]);
-			// Skip elements already rendered by live websocket handler
-			if (li.hasClass("avtt-rehydrated-chat") || li.find(".custom-gamelog-message, [class*='-Message-Collapsed-'], .above-vtt-roll-whisper").length > 0) {
-				li.addClass("avtt-rehydrated-chat");
+			if (li.hasClass("avtt-chat-hydrated")) {
 				continue;
 			}
 			let headerText = "";
@@ -462,7 +460,7 @@ class MessageBroker {
 				continue;
 			}
 
-			li.addClass("avtt-rehydrated-chat");
+			li.addClass("avtt-chat-hydrated");
 
 			let whisper = "";
 			let messageText = "";
