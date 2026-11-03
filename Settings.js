@@ -477,7 +477,7 @@ function avtt_settings(campaignSettings = false) {
 			name: "customPeerHost",
 			label: "PeerJS Host",
 			type: "text",
-			defaultValue: "wyrmbox.com",
+			defaultValue: "",
 			global: 1,
 			class: 'stream'
 	});
@@ -493,7 +493,7 @@ function avtt_settings(campaignSettings = false) {
 			name: "customPeerPath",
 			label: "PeerJS Path",
 			type: "text",
-			defaultValue: "/peerjs",
+			defaultValue: "/",
 			global: 1,
 			class: 'stream'
 	});

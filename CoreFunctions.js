@@ -76,24 +76,22 @@ const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication')
 
 function get_avtt_peerjs_options() {
   try {
-    if (typeof get_avtt_setting_value !== 'function') {
+    if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
       return undefined;
     }
-    if (!get_avtt_setting_value('customPeerEnabled')) {
-      return undefined;
-    }
-    const host = get_avtt_setting_value('customPeerHost') || '0.peerjs.com';
-    const rawPort = get_avtt_setting_value('customPeerPort') || '443';
-    const port = parseInt(rawPort, 10) || 443;
-    const path = get_avtt_setting_value('customPeerPath') || '/';
+    const host = get_avtt_setting_value('customPeerHost');
+    const rawPort = get_avtt_setting_value('customPeerPort');
+    const port = parseInt(rawPort, 10);
+    const path = get_avtt_setting_value('customPeerPath');
     const secure = (port === 443 || window.location.protocol === 'https:');
 
-    const options = {
-      host: host,
-      port: port,
-      path: path,
-      secure: secure
-    };
+    const options = {};
+    if (host && typeof host === 'string' && host.trim() !== '') {
+      options.host = host.trim();
+      if (!isNaN(port) && port > 0) options.port = port;
+      if (path && typeof path === 'string' && path.trim() !== '') options.path = path.trim();
+      options.secure = secure;
+    }
 
     const turnServer = get_avtt_setting_value('customTurnServer');
     if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
@@ -113,7 +111,7 @@ function get_avtt_peerjs_options() {
       options.config = { iceServers: iceServers };
     }
 
-    return options;
+    return Object.keys(options).length > 0 ? options : undefined;
   } catch (err) {
     console.debug('[AboveVTT] get_avtt_peerjs_options fallback:', err);
     return undefined;
