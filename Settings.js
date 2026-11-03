@@ -448,7 +448,35 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: false,
 			class: 'stream'
-	})
+	});
+	settings.push({
+			name: "customPeerEnabled",
+			label: "Custom WebRTC / Signaling Server",
+			type: "toggle",
+			options: [
+				{ value: true, label: "Custom", description: `Connect to a custom PeerJS / signaling server instead of the public 0.peerjs.com cloud server.` },
+				{ value: false, label: "Default", description: `Use the default public PeerJS cloud server (0.peerjs.com).` }
+			],
+			defaultValue: false,
+			class: 'stream'
+	});
+	settings.push({
+			name: "customWebRtcConfig",
+			label: "WebRTC & TURN Configuration",
+			type: "flyoutButton",
+			description: "Configure custom PeerJS signaling host/port/path and Coturn TURN/STUN server credentials.",
+			options: [
+				{ name: "customPeerHost", label: "PeerJS Host", type: "text", defaultValue: "", description: "Custom signaling host (leave empty for default 0.peerjs.com)." },
+				{ name: "customPeerPort", label: "PeerJS Port", type: "text", defaultValue: "443" },
+				{ name: "customPeerPath", label: "PeerJS Path", type: "text", defaultValue: "/" },
+				{ name: "customTurnServer", label: "Custom TURN/STUN Server URL", type: "text", defaultValue: "", description: "e.g. turn:wyrmbox.com:3478 or stun:wyrmbox.com:3478" },
+				{ name: "customTurnSecret", label: "TURN Shared Secret", type: "text", defaultValue: "", description: "Shared secret for dynamic credentials (used by Nextcloud Talk and RFC 5766 REST API servers)." },
+				{ name: "customTurnUser", label: "TURN Username", type: "text", defaultValue: "", description: "Static username (leave empty if using a shared secret)." },
+				{ name: "customTurnPass", label: "TURN Credential", type: "text", defaultValue: "", description: "Static password (leave empty if using a shared secret)." }
+			],
+			defaultValue: {},
+			class: 'stream'
+	});
 	if(!campaignSettings){
 		settings.push({	
 			name: "gridZoomConversion",
@@ -1094,6 +1122,9 @@ function set_avtt_setting_value(name, newValue) {
 			toggle_peer_settings_visibility(newValue);
 			local_peer_setting_changed(name, newValue);
 			break;
+		case "customPeerEnabled":
+			toggle_custom_webrtc_settings_visibility(newValue);
+			break;
 		case "projector":
 			$('#projector_toggle, #projector_zoom_lock').toggleClass('enabled', newValue);
 			break;
@@ -1399,7 +1430,17 @@ function init_settings() {
 
 
 	toggle_peer_settings_visibility(get_avtt_setting_value("peerStreaming"));
+	toggle_custom_webrtc_settings_visibility(get_avtt_setting_value("customPeerEnabled"));
 	redraw_settings_panel_token_examples();
+}
+
+function toggle_custom_webrtc_settings_visibility(enabled) {
+	const flyoutBtn = $('.token-image-modal-footer-select-wrapper[data-option-name="customWebRtcConfig"]');
+	if (enabled) {
+		flyoutBtn.show();
+	} else {
+		flyoutBtn.hide();
+	}
 }
 
 function redraw_settings_panel_token_examples(settings) {

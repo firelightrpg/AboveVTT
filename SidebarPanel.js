@@ -486,6 +486,9 @@ function build_flyout_input(settingOption, currentValue, changeHandler){
     flyoutButton.on("click", function (clickEvent) {
         build_and_display_sidebar_flyout(clickEvent.clientY, function (flyout) {
             let currentValue = get_avtt_setting_value(settingOption.name);
+            if (!currentValue || typeof currentValue !== 'object') {
+                currentValue = {};
+            }
 
             let optionsContainer = build_sidebar_token_options_flyout(settingOption.options, currentValue, function(name, value) {
                 currentValue[name] = value;
@@ -525,7 +528,7 @@ function build_text_input(settingOption, currentValue, changeHandler) {
     changeHandler = function(){};
   }
   let wrapper = $(`
-     <div class="token-image-modal-footer-select-wrapper" data-option-name="${settingOption.name}">
+     <div class="token-image-modal-footer-select-wrapper sidebar-hover-text" data-option-name="${settingOption.name}" ${settingOption.description ? `data-hover="${settingOption.description}"` : ''}>
        <div class="token-image-modal-footer-title">${settingOption.label}</div>
      </div>
   `);
