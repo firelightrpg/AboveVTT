@@ -103,6 +103,124 @@ function get_avtt_peerjs_options() {
   return options;
 }
 
+window.isDiscordRelayLeader = false;
+
+function init_discord_relay_lock() {
+  if (navigator?.locks?.request) {
+    navigator.locks.request('abovevtt_discord_relay_leader', async (lock) => {
+      window.isDiscordRelayLeader = true;
+      // Keep lock open for lifetime of tab
+      await new Promise(() => {});
+    }).catch(() => {
+      window.isDiscordRelayLeader = false;
+    });
+  } else {
+    window.isDiscordRelayLeader = true;
+  }
+}
+
+// Initialize leader election on page startup
+$(function() {
+  init_discord_relay_lock();
+});
+
+function relay_chat_to_discord(msg) {
+  if (!window.DM || !window.isDiscordRelayLeader) return;
+  if (typeof get_avtt_setting_value !== 'function') return;
+  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
+  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
+  if (get_avtt_setting_value('discordRelayChat') === false) return;
+
+  const inj = msg.data?.injected_data || msg;
+  if (inj.whisper && !get_avtt_setting_value('discordRelayWhispers')) {
+    return;
+  }
+
+  const player = inj.player || msg.data?.player_name || 'AboveVTT';
+  const rawText = inj.text || '';
+  const div = document.createElement('div');
+  div.innerHTML = rawText;
+  const cleanText = (div.textContent || div.innerText || '').trim();
+  if (!cleanText) return;
+
+  const payload = {
+    username: player,
+    content: inj.whisper ? `*[Whisper to ${inj.whisper}]* ${cleanText}` : cleanText
+  };
+  if (inj.img && typeof inj.img === 'string' && !inj.img.startsWith('above-bucket-not-a-url')) {
+    payload.avatar_url = inj.img;
+  }
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.debug('[Discord Relay] Error posting chat:', err));
+}
+
+function relay_roll_to_discord(msg) {
+  if (!window.DM || !window.isDiscordRelayLeader) return;
+  if (typeof get_avtt_setting_value !== 'function') return;
+  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
+  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
+  if (get_avtt_setting_value('discordRelayRolls') === false) return;
+
+  const data = msg.data || {};
+  const context = data.context || {};
+  const actor = context.name || data.characterName || 'Character';
+  const action = data.action || 'Dice Roll';
+
+  const rolls = data.rolls || [];
+  if (!rolls.length) return;
+
+  const parts = [];
+  let isCrit = false;
+  let isFumble = false;
+
+  for (const r of rolls) {
+    let resStr = '';
+    if (r.result?.total !== undefined) {
+      resStr = `${r.result.total}`;
+      if (r.result.text && String(r.result.text) !== String(r.result.total)) {
+        resStr += ` \`[${r.result.text}]\``;
+      }
+    } else if (r.total !== undefined) {
+      resStr = `${r.total}`;
+    }
+    if (r.diceNotationStr === '1d20' || (r.rollType && r.rollType.includes('hit'))) {
+      if (r.result?.total === 20 || (r.result?.text && String(r.result.text).includes('(20)'))) isCrit = true;
+      if (r.result?.total === 1 || (r.result?.text && String(r.result.text).includes('(1)'))) isFumble = true;
+    }
+    parts.push(`**${r.rollType || 'Roll'}:** ${resStr}`);
+  }
+
+  let color = 0x5865F2; // Discord Blurple
+  if (isCrit) color = 0x2ECC71; // Green
+  if (isFumble) color = 0xE74C3C; // Red
+
+  const payload = {
+    username: actor,
+    embeds: [
+      {
+        title: `${action}`,
+        description: parts.join('\n'),
+        color: color,
+        footer: { text: 'AboveVTT Game Log' }
+      }
+    ]
+  };
+  if (context.avatarUrl && typeof context.avatarUrl === 'string' && !context.avatarUrl.startsWith('above-bucket-not-a-url')) {
+    payload.avatar_url = context.avatarUrl;
+  }
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
+}
+}
+
 function isIOS() {
   return (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
 	  (navigator?.platform === 'MacIntel' && navigator?.maxTouchPoints > 1));
