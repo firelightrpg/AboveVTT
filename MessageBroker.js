@@ -424,9 +424,16 @@ class MessageBroker {
 		for (let i = 0; i < items.length; i++) {
 			const li = $(items[i]);
 			let headerText = "";
-			let headerEl = li.find("[class*='-Heading'], [class*='-Action'], [class*='Line-Title'], [class*='-RollTitle']").first();
+			// Target the specific title span first to avoid DDB's trailing colon separator
+			let headerEl = li.find(".aboveDiceOutput, [class*='-Heading'], [class*='-Action'], [class*='-Line-Title-'] span:first-child, [class*='Line-Title'] span:first-child").first();
 			if (headerEl.length > 0) {
 				headerText = headerEl.text().trim();
+			}
+			if (!headerText || (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper"))) {
+				headerEl = li.find("[class*='-Heading'], [class*='-Action'], [class*='Line-Title'], [class*='-RollTitle']").first();
+				if (headerEl.length > 0) {
+					headerText = headerEl.text().trim();
+				}
 			}
 			if (!headerText || (!headerText.startsWith("[Chat]") && !headerText.startsWith("[Whisper"))) {
 				li.find("span, h2, h3, h4, div").each(function () {
@@ -459,7 +466,10 @@ class MessageBroker {
 				}
 			}
 
-			messageText = messageText.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9]?$/i, "").trim();
+			// Clean DDB delimiter artifacts: trailing UUIDs and trailing colon
+			messageText = messageText.replace(/\s*:\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9]?.*$/i, "");
+			messageText = messageText.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9]?$/i, "");
+			messageText = messageText.replace(/[:\s]+$/, "").trim();
 
 			const senderEl = li.find("[class*='-Sender'], [class*='Sender']").first();
 			const player = senderEl.text().trim() || "AboveVTT";
