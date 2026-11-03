@@ -34,14 +34,22 @@ $(function() {
                 inject_chat_buttons();
                 setTimeout(function(){
                   $('body').find(".sidebar-panel-loading-indicator").remove();
+                  window.MB?.rehydrate_persisted_chats?.();
                 }, 500);
+                setTimeout(function(){
+                  window.MB?.rehydrate_persisted_chats?.();
+                }, 1500);
               });
             }
             else{
               inject_chat_buttons();
               setTimeout(function () {
                 $('body').find(".sidebar-panel-loading-indicator").remove();
+                window.MB?.rehydrate_persisted_chats?.();
               }, 500);
+              setTimeout(function () {
+                window.MB?.rehydrate_persisted_chats?.();
+              }, 1500);
             }
             
           } else {
