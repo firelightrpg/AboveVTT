@@ -3047,6 +3047,10 @@ function parse_img(url) {
 	if (retval.includes("discordapp.com")) {
 		return update_old_discord_link(retval);
 	}
+	const nextcloudMatch = retval.match(/^(https?:\/\/[^\/]+)\/s\/([a-zA-Z0-9]+)(?:\/(?:download|preview))?\/?(\?.*)?$/i);
+	if (nextcloudMatch) {
+		return `${nextcloudMatch[1]}/s/${nextcloudMatch[2]}/preview${nextcloudMatch[3] || ""}`;
+	}
 
 	return retval;	
 }
