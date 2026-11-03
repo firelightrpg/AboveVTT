@@ -2154,9 +2154,9 @@ class MessageBroker {
 		if (injected_data?.text) {
 			const tempDiv = document.createElement("div");
 			tempDiv.innerHTML = injected_data.text;
-			preview = (tempDiv.textContent || tempDiv.innerText || "").trim().replace(/\s+/g, " ");
-			if (preview.length > 500) {
-				preview = preview.slice(0, 497) + "...";
+			preview = (tempDiv.textContent || tempDiv.innerText || "").trim();
+			if (preview.length > 4000) {
+				preview = preview.slice(0, 3997) + "...";
 			}
 		}
 		const actionTitle = injected_data?.whisper 
