@@ -2005,12 +2005,13 @@ class MessageBroker {
 		};
 		let eventType = "dice/roll/pending";
 		const targetSelf = injected_data.whisper == window.PLAYER_NAME;
+		const shouldPersist = (typeof get_avtt_setting_value === "function" && get_avtt_setting_value("persistChatToDDB") === true);
 		let message = {
 			id: uuid(),
 			source: "web",
 			gameId: this.gameid,
 			userId: this.userid,
-			persist: false, // INTERESSANTE PER RILEGGERLI, per ora non facciamogli casini
+			persist: shouldPersist,
 			messageScope: targetSelf ? "userId": "gameId", 
 			messageTarget: targetSelf ? window.MB.userid : window.MB.gameid,
 			eventType: eventType,
