@@ -65,6 +65,44 @@ const charactersPageRegex = /\/characters\/\d+/;
 
 const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication');
 
+function get_avtt_peerjs_options() {
+  if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
+    return undefined;
+  }
+  const host = get_avtt_setting_value('customPeerHost') || '0.peerjs.com';
+  const rawPort = get_avtt_setting_value('customPeerPort') || '443';
+  const port = parseInt(rawPort, 10) || 443;
+  const path = get_avtt_setting_value('customPeerPath') || '/';
+  const secure = (port === 443 || window.location.protocol === 'https:');
+
+  const options = {
+    host: host,
+    port: port,
+    path: path,
+    secure: secure
+  };
+
+  const turnServer = get_avtt_setting_value('customTurnServer');
+  if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
+    const turnUser = get_avtt_setting_value('customTurnUser');
+    const turnPass = get_avtt_setting_value('customTurnPass');
+    const iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ];
+    const turnEntry = { urls: turnServer.trim() };
+    if (turnUser && typeof turnUser === 'string' && turnUser.trim() !== '') {
+      turnEntry.username = turnUser.trim();
+    }
+    if (turnPass && typeof turnPass === 'string' && turnPass.trim() !== '') {
+      turnEntry.credential = turnPass.trim();
+    }
+    iceServers.push(turnEntry);
+    options.config = { iceServers: iceServers };
+  }
+
+  return options;
+}
+
 function isIOS() {
   return (/iPad|iPhone|iPod/.test(navigator.userAgent) || 
 	  (navigator?.platform === 'MacIntel' && navigator?.maxTouchPoints > 1));

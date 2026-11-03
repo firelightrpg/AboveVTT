@@ -218,7 +218,8 @@ function joinRoom(room = window.gameId) {
         window.videoPeer.disconnect();
         window.videoPeer.destroy();
     }
-    window.videoPeer = new Peer(player_id);
+    const peerOptions = typeof get_avtt_peerjs_options === 'function' ? get_avtt_peerjs_options() : undefined;
+    window.videoPeer = new Peer(player_id, peerOptions);
     if(window.videoConnectedPeers == undefined){
         window.videoConnectedPeers = [player_id];
     }

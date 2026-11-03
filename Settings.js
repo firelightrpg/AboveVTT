@@ -448,7 +448,60 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: false,
 			class: 'stream'
-	})
+	});
+	settings.push({
+			name: "customPeerEnabled",
+			label: "Custom WebRTC / Signaling Server",
+			type: "toggle",
+			options: [
+				{ value: true, label: "Custom", description: `Connect to a custom PeerJS / signaling server instead of the public 0.peerjs.com cloud server.` },
+				{ value: false, label: "Default", description: `Use the default public PeerJS cloud server (0.peerjs.com).` }
+			],
+			defaultValue: false,
+			class: 'stream'
+	});
+	settings.push({
+			name: "customPeerHost",
+			label: "PeerJS Host",
+			type: "text",
+			defaultValue: "wyrmbox.com",
+			class: 'stream'
+	});
+	settings.push({
+			name: "customPeerPort",
+			label: "PeerJS Port",
+			type: "text",
+			defaultValue: "443",
+			class: 'stream'
+	});
+	settings.push({
+			name: "customPeerPath",
+			label: "PeerJS Path",
+			type: "text",
+			defaultValue: "/peerjs",
+			class: 'stream'
+	});
+	settings.push({
+			name: "customTurnServer",
+			label: "Custom TURN/STUN Server URL",
+			type: "text",
+			defaultValue: "",
+			class: 'stream'
+	});
+	settings.push({
+			name: "customTurnUser",
+			label: "TURN Username",
+			type: "text",
+			defaultValue: "",
+			class: 'stream'
+	});
+	settings.push({
+			name: "customTurnPass",
+			label: "TURN Credential",
+			type: "text",
+			defaultValue: "",
+			class: 'stream'
+	});
 	if(!campaignSettings){
 		settings.push({	
 			name: "gridZoomConversion",
