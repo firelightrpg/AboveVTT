@@ -433,6 +433,20 @@ class MessageBroker {
 			if (typeof relay_chat_to_discord === 'function') {
 				relay_chat_to_discord(data);
 			}
+			// Direct local bridge to Sendai DM session ledger
+			if (window.DM && data?.data?.injected_data) {
+				const inj = data.data.injected_data;
+				fetch('http://127.0.0.1:26796/ledger/chat', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						player: inj.player || data.data.player_name || 'AboveVTT',
+						whisper: inj.whisper,
+						text: inj.text,
+						timestamp: Date.now()
+					})
+				}).catch(() => {});
+			}
 		}
 
 
