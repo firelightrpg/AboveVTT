@@ -4695,30 +4695,6 @@ div.token-image {
     max-width: var(--sidebar-width, 340px) !important;
 }
 
-/* When displaying an extras creature statblock, keep .ct-sidebar docked at right: 0px
-   and position only the creature slideout pane over the character sheet (Column 3) to the left of the sidebar */
-.ct-sidebar__inner [class*='styles_content'] > div:first-of-type > div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content):has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']),
-.ct-sidebar__inner [class*='styles_pane'] > div:first-of-type > div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content):has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']),
-.ct-sidebar .ct-sidebar__pane-content:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) {
-    position: fixed !important;
-    top: 30px !important;
-    right: var(--sidebar-width, 340px) !important;
-    width: var(--sidebar-width, 340px) !important;
-    min-width: var(--sidebar-width, 340px) !important;
-    max-width: var(--sidebar-width, 340px) !important;
-    height: calc(100vh - 30px) !important;
-    z-index: 57000 !important;
-    overflow-y: auto !important;
-    background-color: rgb(36, 37, 40) !important;
-    box-shadow: -4px 0 10px rgba(0, 0, 0, 0.3) !important;
-}
-
-.ct-character-sheet--light-mode .ct-sidebar__inner [class*='styles_content'] > div:first-of-type > div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content):has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']),
-.ct-character-sheet--light-mode .ct-sidebar__inner [class*='styles_pane'] > div:first-of-type > div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content):has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']),
-.ct-character-sheet--light-mode .ct-sidebar .ct-sidebar__pane-content:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) {
-    background-color: #fff !important;
-}
-
 .token:before{
     transform: rotate(calc(var(--token-rotation) + var(--token-heading)));
 }
