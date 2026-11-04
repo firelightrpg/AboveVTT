@@ -3491,6 +3491,9 @@ function init_help_menu() {
 							<li>Give it a name (e.g. <em>AboveVTT Game Log</em>), click <strong>Copy Webhook URL</strong>, and paste it into AboveVTT settings under <strong>Discord Integration &rarr; Edit</strong>. Repeat for <code>#dm-log</code>!</li>
 						</ol>
 						<p>For more details, see the official <a href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks" target="_blank" style="text-decoration: underline; color: -webkit-link;">Discord Intro to Webhooks Guide</a>.</p>
+
+						<h4>Campaign vs Global Settings</h4>
+						<p>By default, <strong>Use Across All Campaigns</strong> is set to <em>Global</em>, allowing all your campaigns to share the same Discord webhook configuration. If you run multiple campaigns with distinct Discord servers or channels, switch this toggle to <strong>This Campaign</strong> to store independent webhook settings for each campaign.</p>
 					</div>
 					<div id="tab21">
 						AboveVTT is an open source project. The developers build it in their free time, and rely on users to report and troubleshoot bugs. If you're experiencing a bug, here are a few options: 

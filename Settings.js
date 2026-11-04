@@ -484,6 +484,16 @@ function avtt_settings(campaignSettings = false) {
 			description: "Relay dice rolls, character actions, and chat to Discord channels via webhooks (#player-log and #dm-log).",
 			options: [
 				{
+					name: "discordUseGlobal",
+					label: "Use Across All Campaigns",
+					type: "toggle",
+					options: [
+						{ value: true, label: "Global", description: "Use these webhook settings across all of your campaigns." },
+						{ value: false, label: "This Campaign", description: "Use custom webhook settings only for this campaign." }
+					],
+					defaultValue: true
+				},
+				{
 					name: "discordWebhookUrl",
 					label: "Player Log Webhook URL (#player-log)",
 					type: "text",
@@ -530,7 +540,6 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: {},
 			dmOnly: true,
-			global: 1,
 			class: 'stream'
 	});
 	if(!campaignSettings){
@@ -1153,12 +1162,45 @@ function get_avtt_setting_value(name) {
 				return setValue;
 			}
 			return get_avtt_setting_default_value(name);
+		case "discordConfig":
+			let campaignDiscCfg = window.EXPERIMENTAL_SETTINGS.discordConfig;
+			let globalDiscCfg = null;
+			try {
+				const rawGlobal = localStorage.getItem("AboveVTT_Discord_Global");
+				if (rawGlobal) globalDiscCfg = JSON.parse(rawGlobal);
+			} catch (e) {}
+
+			// Seed global storage if not yet initialized and campaign config exists
+			if (!globalDiscCfg && campaignDiscCfg && typeof campaignDiscCfg === "object" && campaignDiscCfg.discordUseGlobal !== false) {
+				try {
+					localStorage.setItem("AboveVTT_Discord_Global", JSON.stringify(campaignDiscCfg));
+					globalDiscCfg = campaignDiscCfg;
+				} catch (e) {}
+			}
+
+			if (campaignDiscCfg && typeof campaignDiscCfg === "object") {
+				// If explicitly marked as campaign-only (discordUseGlobal === false), use campaign config
+				if (campaignDiscCfg.discordUseGlobal === false) {
+					return campaignDiscCfg;
+				}
+				// If marked global (or not specified) and globalDiscCfg exists, use globalDiscCfg
+				if (globalDiscCfg) {
+					return globalDiscCfg;
+				}
+				return campaignDiscCfg;
+			}
+			// If no campaign config exists yet, fall back to global if available
+			if (globalDiscCfg) {
+				return globalDiscCfg;
+			}
+			return get_avtt_setting_default_value("discordConfig") || {};
+		case "discordUseGlobal":
 		case "discordWebhookUrl":
 		case "discordDmWebhookUrl":
 		case "discordRelayRolls":
 		case "discordRelayChat":
 		case "discordDmMirrorPublic":
-			const discCfg = window.EXPERIMENTAL_SETTINGS.discordConfig;
+			const discCfg = get_avtt_setting_value("discordConfig");
 			if (discCfg && typeof discCfg === "object" && discCfg[name] !== undefined) {
 				return discCfg[name];
 			}
@@ -1187,6 +1229,15 @@ function set_avtt_setting_value(name, newValue) {
 
 	// take action based on the newly changed setting
 	switch (name) {
+		case "discordConfig":
+			if (newValue && typeof newValue === "object") {
+				if (newValue.discordUseGlobal !== false) {
+					try {
+						localStorage.setItem("AboveVTT_Discord_Global", JSON.stringify(newValue));
+					} catch (e) {}
+				}
+			}
+			break;
 		case "iframeStatBlocks":
 			// TODO: change this to use window.EXPERIMENTAL_SETTINGS[name] instead of using special logic
 			if (newValue === true) {
