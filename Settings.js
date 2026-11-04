@@ -539,6 +539,8 @@ function avtt_settings(campaignSettings = false) {
 			global: 1,
 			class: 'stream'
 	});
+			class: 'stream'
+	});
 	if(!campaignSettings){
 		settings.push({	
 			name: "gridZoomConversion",

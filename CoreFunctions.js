@@ -176,6 +176,7 @@ function get_avtt_peerjs_options() {
       const turnSecret = config.customTurnSecret || get_avtt_setting_value('customTurnSecret');
 
       if (turnSecret && typeof turnSecret === 'string' && turnSecret.trim() !== '') {
+        // Dynamic HMAC-SHA1 credential generation (RFC 5766 TURN REST API / Nextcloud Talk shared secret)
         const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
         turnUser = `${expiry}:abovevtt`;
         turnPass = avtt_hmac_sha1(turnSecret.trim(), turnUser);
@@ -321,6 +322,7 @@ function relay_roll_to_discord(msg) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
+}
 }
 
 function isIOS() {
