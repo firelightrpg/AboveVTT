@@ -1307,6 +1307,7 @@ function apply_avtt_roll_button_markup(html, followingText = ''){
   const strongRoll = new RegExp(`(\\s*)(<strong>)(${rollFormula})(<\\/strong>)`, 'gi');
   const damageRollRegexBracket = new RegExp(`\\s*\\((${rollFormula})\\)`, 'gi');
   const damageRollRegex = new RegExp(`\\s*([:\\s>]|^)(${rollFormula})([\\.\\):\\s<,]|\$)`, 'gi');
+  const flatDamageRegex = /(Hit:\s*(?:<em>)?\s*)(\d+)(\s+(?:<em>)?(?:[a-zA-Z]+)\s+damage)/gi;
   const hitRollRegexBracket = /\s*(?<![0-9]+d[0-9]+)(\()([+-]\s?[0-9]+)(\))/gi
   const hitRollRegex = /\s*(?<!(?:[0-9]+d)?[0-9]+)([:\s>]|^)([+-]\s?[0-9]+)([:\s<,]|$)/gi
   const rechargeRegEx = /\s*(Recharge [0-6]?\s?[—–-]?\s?[0-6])/gi
@@ -1318,6 +1319,7 @@ function apply_avtt_roll_button_markup(html, followingText = ''){
     .replaceAll(/(ro|!\d*)&gt;/gi, '$1>')
     .replaceAll(strongRoll, `$1$3`)
     .replaceAll(dashToMinus, `$1-$2`)
+    .replaceAll(flatDamageRegex, `$1<button data-exp='$2' data-mod='' data-rolltype='damage' data-actiontype='${actionType}' class='avtt-roll-button' title='${actionType}'>$2</button>$3`)
     .replaceAll(damageRollRegexBracket, ` <button data-exp='$1' data-mod='' data-rolltype='damage' data-actiontype='${actionType}' class='avtt-roll-button' title='${actionType}'>($1)</button>`)
     .replaceAll(damageRollRegex, ` $1<button data-exp='$2' data-mod='' data-rolltype='damage' data-actiontype='${actionType}' class='avtt-roll-button' title='${actionType}'>$2</button>$3`)
     .replaceAll(hitRollRegexBracket, ` <button data-exp='1d20' data-mod='$2' data-rolltype='to hit' data-actiontype=${actionType} class='avtt-roll-button' title='${actionType}'>$1$2$3</button>`)
@@ -1624,7 +1626,29 @@ function add_journal_roll_buttons(target, tokenId=undefined, specificImage=undef
   })
 
   console.groupEnd()
+  return $currTarget;
 }
+
+function get_statblock_ability_roll_buttons(abilityBtn) {
+  const abilityContainer = (abilityBtn && abilityBtn.closest) ? (abilityBtn.closest('em, strong, b') || abilityBtn) : abilityBtn;
+  const parent = (abilityContainer && abilityContainer.closest) ? abilityContainer.closest('p, div, section') : null;
+  if (!parent) return [];
+  const allRollButtons = Array.from(
+    parent.querySelectorAll('.avtt-roll-button:not([data-rolltype="recharge"]), .avtt-roll-formula-button')
+  );
+  if (allRollButtons.length === 0) return [];
+  const allAbilities = Array.from(
+    parent.querySelectorAll('.avtt-ability-roll-button, em > strong, strong > em, p > strong:first-child, p > em:first-child, p > b:first-child')
+  ).filter(el => el === abilityBtn || el.classList?.contains('avtt-ability-roll-button'));
+  const thisIndex = allAbilities.indexOf(abilityBtn);
+  const nextAbility = thisIndex >= 0 && thisIndex < allAbilities.length - 1 ? allAbilities[thisIndex + 1] : null;
+  return allRollButtons.filter(btn => {
+    const isAfter = (abilityContainer.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const isBeforeNext = !nextAbility || ((btn.compareDocumentPosition(nextAbility) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
+    return isAfter && isBeforeNext;
+  });
+}
+window.get_statblock_ability_roll_buttons = get_statblock_ability_roll_buttons;
 /**
  * Posts a message to the chat when a player connected to the server.
  */

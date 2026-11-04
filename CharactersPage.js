@@ -1063,7 +1063,7 @@ function observe_character_sheet_changes(documentToObserve) {
         $(this).wrap(button);
       })
     }
-    const extras_stats = documentToObserve.find(`.ct-sidebar__inner .ddbc-creature-block:not(.above-vtt-visited), [class*='styles_creatureBlock']:not(.above-vtt-visited)`);
+    const extras_stats = documentToObserve.find(`.ct-sidebar__inner .ddbc-creature-block:not(.above-vtt-visited), .ct-sidebar__inner .ct-creature-pane__block:not(.above-vtt-visited), [class*='styles_creatureBlock']:not(.above-vtt-visited)`);
     if(extras_stats.length>0){
       extras_stats.addClass("above-vtt-visited");   
       scan_player_creature_pane($(extras_stats));
