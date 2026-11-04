@@ -456,6 +456,7 @@ function avtt_settings(campaignSettings = false) {
 			defaultValue: "",
 			description: "Discord webhook for the public player channel (e.g. #player-log). Receives public rolls and public chat. Never receives secret DM rolls or whispers.",
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -465,6 +466,7 @@ function avtt_settings(campaignSettings = false) {
 			defaultValue: "",
 			description: "Discord webhook for your private DM channel (e.g. #dm-log). Receives secret rolls ('To Self' / 'To DM') and private whispers.",
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -477,6 +479,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: true,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -489,6 +492,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: true,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	settings.push({
@@ -501,6 +505,7 @@ function avtt_settings(campaignSettings = false) {
 			],
 			defaultValue: true,
 			dmOnly: true,
+			global: 1,
 			class: 'stream'
 	});
 	if(!campaignSettings){
