@@ -533,8 +533,8 @@ function build_text_input(settingOption, currentValue, changeHandler) {
      </div>
   `);
   const input = $(`<input class='flyout-text-input' type="text" name="${settingOption.name}" value="${currentValue != undefined ? currentValue : settingOption.defaultValue}" size="30"/>`);
-  input.on('blur',function() { 
-    changeHandler(settingOption.name, $(this).val()) 
+  input.on('blur change input', function() { 
+    changeHandler(settingOption.name, $(this).val()); 
   });
   wrapper.append(input);
   return wrapper;
