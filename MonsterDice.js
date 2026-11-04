@@ -385,15 +385,18 @@ function scan_player_creature_pane(target) {
 	container.html(newHtml);
 
 
-	add_journal_roll_buttons(target, 'playerExtra', creatureAvatar, displayName);
-	container.find(".avtt-roll-button").on("contextmenu", rightClickHandler);
+	const activeTarget = add_journal_roll_buttons(target, 'playerExtra', creatureAvatar, displayName) || target;
+	const activeContainer = $(activeTarget);
+	activeContainer.find(".avtt-roll-button").on("contextmenu", rightClickHandler);
 
-	container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em").off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
+	const abilitySelector = "p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em, p>strong:first-child, div>strong:first-child, p>em:first-child, div>em:first-child, p>b:first-child";
+
+	activeContainer.find(abilitySelector).off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
     e.preventDefault();
     if(e.altKey || e.shiftKey || (!isMac() && e.ctrlKey) || e.metaKey)
       return;
 	let outerP = e.target.closest('p, div').outerHTML;
-	const regExFeature = new RegExp(`${e.target.outerHTML.replace(/([\(\)])/g,"\\$1")}[\\s\\S]+?(?=(<\/p>|<\/div>|<strong><em|<em><strong))`, 'gi');
+	const regExFeature = new RegExp(`${e.target.outerHTML.replace(/([\(\)])/g,"\\$1")}[\s\S]+?(?=(<\/p>|<\/div>|<strong><em|<em><strong))`, 'gi');
     let match = outerP.match(regExFeature);
 
 
@@ -401,7 +404,7 @@ function scan_player_creature_pane(target) {
       	let matched = `<p>${match[0]}</p>`;
       
 
-		if ($(e.target.closest('p, div')).find('em>strong, strong>em').length == 1){
+		if ($(e.target.closest('p, div')).find('em>strong, strong>em, strong, em').length == 1){
 			let nextParagraphs = $(e.target.closest('p, div')).nextUntil('p:has(>em>strong), p:has(>strong>em), div:has(>strong>em), div:has(>em>strong)');
 			for(let i=0; i<nextParagraphs.length; i++){   
 			matched = `${matched}${nextParagraphs[i].outerHTML.trim()}`;
@@ -415,7 +418,7 @@ function scan_player_creature_pane(target) {
     
   })
 
-  container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em").off("pointerdown.roll touchstart.roll").on("pointerdown.roll touchstart.roll", function (e) {
+  activeContainer.find(abilitySelector).off("pointerdown.roll touchstart.roll").on("pointerdown.roll touchstart.roll", function (e) {
 	if (e.button === 2) return;
 	e.preventDefault();
 	e.stopPropagation();
@@ -423,7 +426,10 @@ function scan_player_creature_pane(target) {
 
     if($(e.target).text().includes('Recharge'))
       return;
-    let rollButtons = $(e.currentTarget).closest('em:has(strong), strong:has(em)').nextUntil(':has(.avtt-ability-roll-button)').closest('.avtt-roll-button:not([data-rolltype="recharge"])');
+    let rollButtons = typeof get_statblock_ability_roll_buttons === 'function' ? get_statblock_ability_roll_buttons(e.currentTarget) : [];
+    if (!rollButtons.length) {
+      rollButtons = $(e.currentTarget).closest('em, strong, b').nextUntil(':has(.avtt-ability-roll-button)').filter('.avtt-roll-button:not([data-rolltype="recharge"])').toArray();
+    }
     
 
     $(e.target.closest('p, div')).find('.avtt-aoe-button')?.click();
@@ -447,11 +453,11 @@ function scan_player_creature_pane(target) {
            else if((!isMac() && e.ctrlKey) || e.metaKey){
             diceRoll = new DiceRoll(`2d20kl1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
            }else{
-            diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster")
+            diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
            }
         }
         else{
-          diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster")
+          diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
         }
       
 
@@ -461,14 +467,16 @@ function scan_player_creature_pane(target) {
       }
     }
   })
-  let abilities= container.find("p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em");
+  let abilities = activeContainer.find(abilitySelector);
 
   for(let i = 0; i<abilities.length; i++){
     if (!abilities[i].textContent.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()) {
       $(abilities[i]).removeClass('avtt-ability-roll-button');
       continue;
     }
-    if($(abilities[i]).closest('em:has(strong), strong:has(em)').nextUntil('em:has(strong), strong:has(em)').is('.avtt-roll-button, :has(.avtt-roll-button)')){
+    const btns = typeof get_statblock_ability_roll_buttons === 'function' ? get_statblock_ability_roll_buttons(abilities[i]) : [];
+    const hasRolls = btns.length > 0 || $(abilities[i]).closest('em, strong, b').nextUntil('em, strong, b').is('.avtt-roll-button, :has(.avtt-roll-button)');
+    if(hasRolls){
       $(abilities[i]).toggleClass('avtt-ability-roll-button', true);
     }
   }
