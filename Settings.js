@@ -451,9 +451,19 @@ function avtt_settings(campaignSettings = false) {
 	});
 	settings.push({
 			name: "discordWebhookUrl",
-			label: "Discord Webhook URL",
+			label: "Player Log Webhook URL (#player-log)",
 			type: "text",
 			defaultValue: "",
+			description: "Discord webhook for the public player channel (e.g. #player-log). Receives public rolls and public chat. Never receives secret DM rolls or whispers.",
+			dmOnly: true,
+			class: 'stream'
+	});
+	settings.push({
+			name: "discordDmWebhookUrl",
+			label: "DM Log Webhook URL (#dm-log)",
+			type: "text",
+			defaultValue: "",
+			description: "Discord webhook for your private DM channel (e.g. #dm-log). Receives secret rolls ('To Self' / 'To DM') and private whispers.",
 			dmOnly: true,
 			class: 'stream'
 	});
@@ -462,7 +472,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "Relay Rolls to Discord",
 			type: "toggle",
 			options: [
-				{ value: true, label: "Enabled", description: "Relay dice rolls, attacks, and checks to your Discord channel via webhook." },
+				{ value: true, label: "Enabled", description: "Relay dice rolls, attacks, and checks to Discord." },
 				{ value: false, label: "Disabled", description: "Do not relay dice rolls to Discord." }
 			],
 			defaultValue: true,
@@ -474,7 +484,7 @@ function avtt_settings(campaignSettings = false) {
 			label: "Relay Chat to Discord",
 			type: "toggle",
 			options: [
-				{ value: true, label: "Enabled", description: "Relay in-character chatter and AboveVTT messages to your Discord channel via webhook." },
+				{ value: true, label: "Enabled", description: "Relay in-character chatter and AboveVTT messages to Discord." },
 				{ value: false, label: "Disabled", description: "Do not relay chat messages to Discord." }
 			],
 			defaultValue: true,
@@ -482,14 +492,14 @@ function avtt_settings(campaignSettings = false) {
 			class: 'stream'
 	});
 	settings.push({
-			name: "discordRelayWhispers",
-			label: "Relay Whispers to Discord",
+			name: "discordDmMirrorPublic",
+			label: "Mirror Player Log to DM Channel",
 			type: "toggle",
 			options: [
-				{ value: true, label: "Enabled", description: "Relay private whispers to Discord (marked as whispers). Caution: visible to anyone in that channel." },
-				{ value: false, label: "Disabled", description: "Default. Keep private whispers within AboveVTT." }
+				{ value: true, label: "Enabled", description: "Also mirror public player rolls and chat to #dm-log for a complete master archive." },
+				{ value: false, label: "Disabled", description: "Send only private rolls and whispers to #dm-log." }
 			],
-			defaultValue: false,
+			defaultValue: true,
 			dmOnly: true,
 			class: 'stream'
 	});
