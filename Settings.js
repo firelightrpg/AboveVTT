@@ -474,58 +474,20 @@ function avtt_settings(campaignSettings = false) {
 			class: 'stream'
 	});
 	settings.push({
-			name: "customPeerHost",
-			label: "PeerJS Host",
-			type: "text",
-			defaultValue: "",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customPeerPort",
-			label: "PeerJS Port",
-			type: "text",
-			defaultValue: "443",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customPeerPath",
-			label: "PeerJS Path",
-			type: "text",
-			defaultValue: "/",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customTurnServer",
-			label: "Custom TURN/STUN Server URL",
-			type: "text",
-			defaultValue: "",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customTurnSecret",
-			label: "TURN Shared Secret (Nextcloud Talk / RFC 5766)",
-			type: "text",
-			defaultValue: "",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customTurnUser",
-			label: "TURN Static Username",
-			type: "text",
-			defaultValue: "",
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "customTurnPass",
-			label: "TURN Static Credential",
-			type: "text",
-			defaultValue: "",
+			name: "customWebRtcConfig",
+			label: "WebRTC & TURN Configuration",
+			type: "flyoutButton",
+			description: "Configure custom PeerJS signaling host/port/path and Coturn TURN/STUN server credentials.",
+			options: [
+				{ name: "customPeerHost", label: "PeerJS Host", type: "text", defaultValue: "" },
+				{ name: "customPeerPort", label: "PeerJS Port", type: "text", defaultValue: "443" },
+				{ name: "customPeerPath", label: "PeerJS Path", type: "text", defaultValue: "/" },
+				{ name: "customTurnServer", label: "Custom TURN/STUN Server URL", type: "text", defaultValue: "" },
+				{ name: "customTurnSecret", label: "TURN Shared Secret (Nextcloud Talk / RFC 5766)", type: "text", defaultValue: "" },
+				{ name: "customTurnUser", label: "TURN Static Username", type: "text", defaultValue: "" },
+				{ name: "customTurnPass", label: "TURN Static Credential", type: "text", defaultValue: "" }
+			],
+			defaultValue: {},
 			global: 1,
 			class: 'stream'
 	});
@@ -1544,19 +1506,11 @@ function init_settings() {
 }
 
 function toggle_custom_webrtc_settings_visibility(enabled) {
-	const selectors = `
-		.token-image-modal-footer-select-wrapper[data-option-name="customPeerHost"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customPeerPort"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customPeerPath"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customTurnServer"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customTurnSecret"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customTurnUser"],
-		.token-image-modal-footer-select-wrapper[data-option-name="customTurnPass"]
-	`;
+	const flyoutBtn = $('.token-image-modal-footer-select-wrapper[data-option-name="customWebRtcConfig"]');
 	if (enabled) {
-		$(selectors).show();
+		flyoutBtn.show();
 	} else {
-		$(selectors).hide();
+		flyoutBtn.hide();
 	}
 }
 

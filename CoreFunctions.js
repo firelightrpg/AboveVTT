@@ -154,10 +154,11 @@ function get_avtt_peerjs_options() {
     if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
       return undefined;
     }
-    const host = get_avtt_setting_value('customPeerHost');
-    const rawPort = get_avtt_setting_value('customPeerPort');
+    const config = get_avtt_setting_value('customWebRtcConfig') || {};
+    const host = config.customPeerHost || get_avtt_setting_value('customPeerHost');
+    const rawPort = config.customPeerPort || get_avtt_setting_value('customPeerPort');
     const port = parseInt(rawPort, 10);
-    const path = get_avtt_setting_value('customPeerPath');
+    const path = config.customPeerPath || get_avtt_setting_value('customPeerPath');
     const secure = (port === 443 || window.location.protocol === 'https:');
 
     const options = {};
@@ -168,11 +169,11 @@ function get_avtt_peerjs_options() {
       options.secure = secure;
     }
 
-    const turnServer = get_avtt_setting_value('customTurnServer');
+    const turnServer = config.customTurnServer || get_avtt_setting_value('customTurnServer');
     if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
-      let turnUser = get_avtt_setting_value('customTurnUser');
-      let turnPass = get_avtt_setting_value('customTurnPass');
-      const turnSecret = get_avtt_setting_value('customTurnSecret');
+      let turnUser = config.customTurnUser || get_avtt_setting_value('customTurnUser');
+      let turnPass = config.customTurnPass || get_avtt_setting_value('customTurnPass');
+      const turnSecret = config.customTurnSecret || get_avtt_setting_value('customTurnSecret');
 
       if (turnSecret && typeof turnSecret === 'string' && turnSecret.trim() !== '') {
         const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
