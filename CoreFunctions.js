@@ -109,8 +109,10 @@ function relay_chat_to_discord(msg) {
     username: player,
     content: inj.whisper ? `*[Whisper to ${inj.whisper}]* ${cleanText}` : cleanText
   };
-  if (inj.img && typeof inj.img === 'string' && !inj.img.startsWith('above-bucket-not-a-url')) {
-    payload.avatar_url = inj.img;
+  let avatar = inj.img || msg.data?.player_img;
+  if (avatar && typeof avatar === 'string' && !avatar.startsWith('above-bucket-not-a-url')) {
+    if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+    payload.avatar_url = avatar;
   }
 
   fetch(webhookUrl, {
@@ -160,19 +162,34 @@ function relay_roll_to_discord(msg) {
   if (isCrit) color = 0x2ECC71; // Green
   if (isFumble) color = 0xE74C3C; // Red
 
+  let avatar = context.avatarUrl || data.avatarUrl;
+  if (avatar && typeof avatar === 'string' && !avatar.startsWith('above-bucket-not-a-url')) {
+    if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+  } else {
+    avatar = null;
+  }
+
+  const embed = {
+    title: `${action}`,
+    description: parts.join('\n'),
+    color: color,
+    footer: { text: 'AboveVTT Game Log' }
+  };
+
+  if (actor) {
+    embed.author = { name: actor };
+    if (avatar) embed.author.icon_url = avatar;
+  }
+  if (avatar) {
+    embed.thumbnail = { url: avatar };
+  }
+
   const payload = {
     username: actor,
-    embeds: [
-      {
-        title: `${action}`,
-        description: parts.join('\n'),
-        color: color,
-        footer: { text: 'AboveVTT Game Log' }
-      }
-    ]
+    embeds: [embed]
   };
-  if (context.avatarUrl && typeof context.avatarUrl === 'string' && !context.avatarUrl.startsWith('above-bucket-not-a-url')) {
-    payload.avatar_url = context.avatarUrl;
+  if (avatar) {
+    payload.avatar_url = avatar;
   }
 
   fetch(webhookUrl, {
