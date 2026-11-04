@@ -120,6 +120,7 @@ function get_avtt_peerjs_options() {
 }
 
 window.isDiscordRelayLeader = false;
+const relayedDiscordRollKeys = new Set();
 
 function init_discord_relay_lock() {
   try {
@@ -147,14 +148,14 @@ $(function() {
 function relay_chat_to_discord(msg) {
   if (!window.DM || !window.isDiscordRelayLeader) return;
   if (typeof get_avtt_setting_value !== 'function') return;
-  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
-  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
   if (get_avtt_setting_value('discordRelayChat') === false) return;
 
+  const playerWebhook = get_avtt_setting_value('discordWebhookUrl');
+  const dmWebhook = get_avtt_setting_value('discordDmWebhookUrl');
+  const mirrorToDm = get_avtt_setting_value('discordDmMirrorPublic') !== false;
+
   const inj = msg.data?.injected_data || msg;
-  if (inj.whisper && !get_avtt_setting_value('discordRelayWhispers')) {
-    return;
-  }
+  const isWhisper = Boolean(inj.whisper || inj.whisper_to || inj.is_whisper);
 
   const player = inj.player || msg.data?.player_name || 'AboveVTT';
   const rawText = inj.text || '';
@@ -165,7 +166,7 @@ function relay_chat_to_discord(msg) {
 
   const payload = {
     username: player,
-    content: inj.whisper ? `*[Whisper to ${inj.whisper}]* ${cleanText}` : cleanText
+    content: isWhisper ? `🔒 *[Whisper to ${inj.whisper}]* ${cleanText}` : cleanText
   };
   let avatar = inj.img || msg.data?.player_img;
   if (avatar && typeof avatar === 'string' && !avatar.startsWith('above-bucket-not-a-url')) {
@@ -173,24 +174,64 @@ function relay_chat_to_discord(msg) {
     payload.avatar_url = avatar;
   }
 
-  fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).catch(err => console.debug('[Discord Relay] Error posting chat:', err));
+  // Routing: Whispers ONLY go to DM channel, public chat goes to player channel
+  const destinations = [];
+  if (isWhisper) {
+    if (dmWebhook && typeof dmWebhook === 'string' && dmWebhook.startsWith('https://')) {
+      destinations.push(dmWebhook);
+    }
+  } else {
+    if (playerWebhook && typeof playerWebhook === 'string' && playerWebhook.startsWith('https://')) {
+      destinations.push(playerWebhook);
+    }
+    if (mirrorToDm && dmWebhook && typeof dmWebhook === 'string' && dmWebhook.startsWith('https://') && dmWebhook !== playerWebhook) {
+      destinations.push(dmWebhook);
+    }
+  }
+
+  for (const url of destinations) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(err => console.debug('[Discord Relay] Error posting chat:', err));
+  }
 }
 
 function relay_roll_to_discord(msg) {
   if (!window.DM || !window.isDiscordRelayLeader) return;
   if (typeof get_avtt_setting_value !== 'function') return;
-  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
-  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
   if (get_avtt_setting_value('discordRelayRolls') === false) return;
+
+  const playerWebhook = get_avtt_setting_value('discordWebhookUrl');
+  const dmWebhook = get_avtt_setting_value('discordDmWebhookUrl');
+  const mirrorToDm = get_avtt_setting_value('discordDmMirrorPublic') !== false;
 
   const data = msg.data || {};
   const context = data.context || {};
   const actor = context.name || data.characterName || 'Character';
   const action = data.action || 'Dice Roll';
+
+  // Determine if roll is private / secret (Self roll or sent to DM)
+  // If messageScope is 'gameId' or sendTo is 'everyone', it is explicitly public (e.g. standard roll or revealed via Send To Everyone)
+  const isPrivate = (msg.messageScope === 'gameId' || context.messageScope === 'gameId' || data.sendTo === 'everyone') ? false :
+                    (msg.messageScope === 'userId' || 
+                     context.messageScope === 'userId' || 
+                     data.sendTo === 'self' || 
+                     data.sendTo === 'dungeonmaster');
+
+  const rollId = data.rollId || msg.id;
+  const dedupeKey = rollId ? `${rollId}_${isPrivate ? 'priv' : 'pub'}` : null;
+  if (dedupeKey && relayedDiscordRollKeys.has(dedupeKey)) {
+    return;
+  }
+  if (dedupeKey) {
+    relayedDiscordRollKeys.add(dedupeKey);
+    if (relayedDiscordRollKeys.size > 200) {
+      const first = relayedDiscordRollKeys.values().next().value;
+      relayedDiscordRollKeys.delete(first);
+    }
+  }
 
   const rolls = data.rolls || [];
   if (!rolls.length) return;
@@ -216,7 +257,7 @@ function relay_roll_to_discord(msg) {
     parts.push(`**${r.rollType || 'Roll'}:** ${resStr}`);
   }
 
-  let color = 0x5865F2; // Discord Blurple
+  let color = isPrivate ? 0x9B59B6 : 0x5865F2; // Purple for private DM roll, Blurple for public
   if (isCrit) color = 0x2ECC71; // Green
   if (isFumble) color = 0xE74C3C; // Red
 
@@ -227,11 +268,18 @@ function relay_roll_to_discord(msg) {
     avatar = null;
   }
 
+  let titlePrefix = '';
+  if (isPrivate) {
+    titlePrefix = '🔒 [Secret DM Roll] ';
+  } else if (msg.isRevealed) {
+    titlePrefix = '📢 [Revealed] ';
+  }
+
   const embed = {
-    title: `${action}`,
+    title: `${titlePrefix}${action}`,
     description: parts.join('\n'),
     color: color,
-    footer: { text: 'AboveVTT Game Log' }
+    footer: { text: isPrivate ? 'AboveVTT DM Game Log' : (msg.isRevealed ? 'AboveVTT Revealed Roll' : 'AboveVTT Game Log') }
   };
 
   if (actor) {
@@ -250,11 +298,28 @@ function relay_roll_to_discord(msg) {
     payload.avatar_url = avatar;
   }
 
-  fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
+  // Routing: Secret rolls ONLY go to DM channel, public rolls go to player channel
+  const destinations = [];
+  if (isPrivate) {
+    if (dmWebhook && typeof dmWebhook === 'string' && dmWebhook.startsWith('https://')) {
+      destinations.push(dmWebhook);
+    }
+  } else {
+    if (playerWebhook && typeof playerWebhook === 'string' && playerWebhook.startsWith('https://')) {
+      destinations.push(playerWebhook);
+    }
+    if (mirrorToDm && dmWebhook && typeof dmWebhook === 'string' && dmWebhook.startsWith('https://') && dmWebhook !== playerWebhook) {
+      destinations.push(dmWebhook);
+    }
+  }
+
+  for (const url of destinations) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
+  }
 }
 
 function isIOS() {
