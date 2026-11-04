@@ -672,6 +672,9 @@ class DiceRoller {
                     return;
                 } else if (msg.eventType == "dice/roll/fulfilled") {
                     notify_gamelog();
+                    if (typeof relay_roll_to_discord === "function") {
+                        relay_roll_to_discord(msg);
+                    }
                     const gamelogItem = $(`ol[class*='-GameLogEntries'] li`).first();
 
 

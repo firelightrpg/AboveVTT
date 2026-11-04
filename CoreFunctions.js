@@ -65,128 +65,180 @@ const charactersPageRegex = /\/characters\/\d+/;
 
 const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication');
 
-function avtt_hmac_sha1(key, message) {
-  function utf8Encode(str) {
-    const bytes = [];
-    for (let i = 0; i < str.length; i++) {
-      let code = str.charCodeAt(i);
-      if (code < 0x80) bytes.push(code);
-      else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-      else if (code < 0xd800 || code >= 0xe000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-      else {
-        i++;
-        code = 0x10000 + (((code & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-        bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-      }
-    }
-    return bytes;
-  }
-
-  function sha1(bytes) {
-    const words = [];
-    for (let i = 0; i < bytes.length; i++) {
-      words[i >> 2] = (words[i >> 2] || 0) | (bytes[i] << (24 - (i % 4) * 8));
-    }
-    const bitLen = bytes.length * 8;
-    words[bitLen >> 5] = (words[bitLen >> 5] || 0) | (0x80 << (24 - (bitLen % 32)));
-    words[(((bitLen + 64) >> 9) << 4) + 15] = bitLen;
-
-    const w = new Int32Array(80);
-    let h0 = 1732584193, h1 = -271733879, h2 = -1732584194, h3 = 271733878, h4 = -1009589776;
-
-    for (let i = 0; i < words.length; i += 16) {
-      for (let t = 0; t < 16; t++) w[t] = words[i + t] || 0;
-      for (let t = 16; t < 80; t++) {
-        const v = w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16];
-        w[t] = (v << 1) | (v >>> 31);
-      }
-      let a = h0, b = h1, c = h2, d = h3, e = h4;
-      for (let t = 0; t < 80; t++) {
-        let f, k;
-        if (t < 20) { f = (b & c) | ((~b) & d); k = 1518500249; }
-        else if (t < 40) { f = b ^ c ^ d; k = 1859775393; }
-        else if (t < 60) { f = (b & c) | (b & d) | (c & d); k = -1894007588; }
-        else { f = b ^ c ^ d; k = -899497514; }
-        const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[t]) | 0;
-        e = d; d = c; c = ((b << 30) | (b >>> 2)) | 0; b = a; a = temp;
-      }
-      h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;
-    }
-    const result = [];
-    const h = [h0, h1, h2, h3, h4];
-    for (let i = 0; i < 5; i++) {
-      for (let j = 3; j >= 0; j--) {
-        result.push((h[i] >>> (j * 8)) & 0xff);
-      }
-    }
-    return result;
-  }
-
-  let k = utf8Encode(key);
-  if (k.length > 64) k = sha1(k);
-  while (k.length < 64) k.push(0);
-
-  const o_pad = [], i_pad = [];
-  for (let i = 0; i < 64; i++) {
-    o_pad[i] = k[i] ^ 0x5c;
-    i_pad[i] = k[i] ^ 0x36;
-  }
-
-  const innerHash = sha1(i_pad.concat(utf8Encode(message)));
-  const outerHash = sha1(o_pad.concat(innerHash));
-
-  let binary = "";
-  for (let i = 0; i < outerHash.length; i++) binary += String.fromCharCode(outerHash[i]);
-  return typeof btoa === "function" ? btoa(binary) : binary;
-}
-
 function get_avtt_peerjs_options() {
-  if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
+  try {
+    if (typeof get_avtt_setting_value !== 'function' || !get_avtt_setting_value('customPeerEnabled')) {
+      return undefined;
+    }
+    const config = get_avtt_setting_value('customWebRtcConfig') || {};
+    const host = config.customPeerHost || get_avtt_setting_value('customPeerHost');
+    const rawPort = config.customPeerPort || get_avtt_setting_value('customPeerPort');
+    const port = parseInt(rawPort, 10);
+    const path = config.customPeerPath || get_avtt_setting_value('customPeerPath');
+    const secure = (port === 443 || window.location.protocol === 'https:');
+
+    const options = {};
+    if (host && typeof host === 'string' && host.trim() !== '') {
+      options.host = host.trim();
+      if (!isNaN(port) && port > 0) options.port = port;
+      if (path && typeof path === 'string' && path.trim() !== '') options.path = path.trim();
+      options.secure = secure;
+    }
+
+    const turnServer = config.customTurnServer || get_avtt_setting_value('customTurnServer');
+    if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
+      let turnUser = config.customTurnUser || get_avtt_setting_value('customTurnUser');
+      let turnPass = config.customTurnPass || get_avtt_setting_value('customTurnPass');
+      const turnSecret = config.customTurnSecret || get_avtt_setting_value('customTurnSecret');
+
+      if (turnSecret && typeof turnSecret === 'string' && turnSecret.trim() !== '') {
+        // Dynamic HMAC-SHA1 credential generation (RFC 5766 TURN REST API / Nextcloud Talk shared secret)
+        const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
+        turnUser = `${expiry}:abovevtt`;
+        turnPass = avtt_hmac_sha1(turnSecret.trim(), turnUser);
+      }
+
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ];
+      const turnEntry = { urls: turnServer.trim() };
+      if (turnUser && typeof turnUser === 'string' && turnUser.trim() !== '') {
+        turnEntry.username = turnUser.trim();
+      }
+      if (turnPass && typeof turnPass === 'string' && turnPass.trim() !== '') {
+        turnEntry.credential = turnPass.trim();
+      }
+      iceServers.push(turnEntry);
+      options.config = { iceServers: iceServers };
+    }
+
+    return Object.keys(options).length > 0 ? options : undefined;
+  } catch (err) {
+    console.debug('[AboveVTT] get_avtt_peerjs_options fallback:', err);
     return undefined;
   }
-  const config = get_avtt_setting_value('customWebRtcConfig') || {};
-  const host = config.customPeerHost || get_avtt_setting_value('customPeerHost');
-  const rawPort = config.customPeerPort || get_avtt_setting_value('customPeerPort');
-  const port = parseInt(rawPort, 10);
-  const path = config.customPeerPath || get_avtt_setting_value('customPeerPath');
-  const secure = (port === 443 || window.location.protocol === 'https:');
+}
 
-  const options = {};
-  if (host && typeof host === 'string' && host.trim() !== '') {
-    options.host = host.trim();
-    if (!isNaN(port) && port > 0) options.port = port;
-    if (path && typeof path === 'string' && path.trim() !== '') options.path = path.trim();
-    options.secure = secure;
+window.isDiscordRelayLeader = false;
+
+function init_discord_relay_lock() {
+  try {
+    if (navigator?.locks?.request) {
+      navigator.locks.request('abovevtt_discord_relay_leader', async (lock) => {
+        window.isDiscordRelayLeader = true;
+        // Keep lock open for lifetime of tab
+        await new Promise(() => {});
+      }).catch(() => {
+        window.isDiscordRelayLeader = false;
+      });
+    } else {
+      window.isDiscordRelayLeader = true;
+    }
+  } catch (err) {
+    window.isDiscordRelayLeader = true;
+  }
+}
+
+// Initialize leader election on page startup
+$(function() {
+  init_discord_relay_lock();
+});
+
+function relay_chat_to_discord(msg) {
+  if (!window.DM || !window.isDiscordRelayLeader) return;
+  if (typeof get_avtt_setting_value !== 'function') return;
+  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
+  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
+  if (get_avtt_setting_value('discordRelayChat') === false) return;
+
+  const inj = msg.data?.injected_data || msg;
+  if (inj.whisper && !get_avtt_setting_value('discordRelayWhispers')) {
+    return;
   }
 
-  const turnServer = config.customTurnServer || get_avtt_setting_value('customTurnServer');
-  if (turnServer && typeof turnServer === 'string' && turnServer.trim() !== '') {
-    let turnUser = config.customTurnUser || get_avtt_setting_value('customTurnUser');
-    let turnPass = config.customTurnPass || get_avtt_setting_value('customTurnPass');
-    const turnSecret = config.customTurnSecret || get_avtt_setting_value('customTurnSecret');
+  const player = inj.player || msg.data?.player_name || 'AboveVTT';
+  const rawText = inj.text || '';
+  const div = document.createElement('div');
+  div.innerHTML = rawText;
+  const cleanText = (div.textContent || div.innerText || '').trim();
+  if (!cleanText) return;
 
-    if (turnSecret && typeof turnSecret === 'string' && turnSecret.trim() !== '') {
-      // Dynamic HMAC-SHA1 credential generation (RFC 5766 TURN REST API / Nextcloud Talk shared secret)
-      const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
-      turnUser = `${expiry}:abovevtt`;
-      turnPass = avtt_hmac_sha1(turnSecret.trim(), turnUser);
-    }
-
-    const iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ];
-    const turnEntry = { urls: turnServer.trim() };
-    if (turnUser && typeof turnUser === 'string' && turnUser.trim() !== '') {
-      turnEntry.username = turnUser.trim();
-    }
-    if (turnPass && typeof turnPass === 'string' && turnPass.trim() !== '') {
-      turnEntry.credential = turnPass.trim();
-    }
-    iceServers.push(turnEntry);
-    options.config = { iceServers: iceServers };
+  const payload = {
+    username: player,
+    content: inj.whisper ? `*[Whisper to ${inj.whisper}]* ${cleanText}` : cleanText
+  };
+  if (inj.img && typeof inj.img === 'string' && !inj.img.startsWith('above-bucket-not-a-url')) {
+    payload.avatar_url = inj.img;
   }
 
-  return Object.keys(options).length > 0 ? options : undefined;
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.debug('[Discord Relay] Error posting chat:', err));
+}
+
+function relay_roll_to_discord(msg) {
+  if (!window.DM || !window.isDiscordRelayLeader) return;
+  if (typeof get_avtt_setting_value !== 'function') return;
+  const webhookUrl = get_avtt_setting_value('discordWebhookUrl');
+  if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) return;
+  if (get_avtt_setting_value('discordRelayRolls') === false) return;
+
+  const data = msg.data || {};
+  const context = data.context || {};
+  const actor = context.name || data.characterName || 'Character';
+  const action = data.action || 'Dice Roll';
+
+  const rolls = data.rolls || [];
+  if (!rolls.length) return;
+
+  const parts = [];
+  let isCrit = false;
+  let isFumble = false;
+
+  for (const r of rolls) {
+    let resStr = '';
+    if (r.result?.total !== undefined) {
+      resStr = `${r.result.total}`;
+      if (r.result.text && String(r.result.text) !== String(r.result.total)) {
+        resStr += ` \`[${r.result.text}]\``;
+      }
+    } else if (r.total !== undefined) {
+      resStr = `${r.total}`;
+    }
+    if (r.diceNotationStr === '1d20' || (r.rollType && r.rollType.includes('hit'))) {
+      if (r.result?.total === 20 || (r.result?.text && String(r.result.text).includes('(20)'))) isCrit = true;
+      if (r.result?.total === 1 || (r.result?.text && String(r.result.text).includes('(1)'))) isFumble = true;
+    }
+    parts.push(`**${r.rollType || 'Roll'}:** ${resStr}`);
+  }
+
+  let color = 0x5865F2; // Discord Blurple
+  if (isCrit) color = 0x2ECC71; // Green
+  if (isFumble) color = 0xE74C3C; // Red
+
+  const payload = {
+    username: actor,
+    embeds: [
+      {
+        title: `${action}`,
+        description: parts.join('\n'),
+        color: color,
+        footer: { text: 'AboveVTT Game Log' }
+      }
+    ]
+  };
+  if (context.avatarUrl && typeof context.avatarUrl === 'string' && !context.avatarUrl.startsWith('above-bucket-not-a-url')) {
+    payload.avatar_url = context.avatarUrl;
+  }
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
+}
 }
 
 function isIOS() {
