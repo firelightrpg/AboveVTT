@@ -4695,6 +4695,37 @@ div.token-image {
     max-width: var(--sidebar-width, 340px) !important;
 }
 
+/* When a detail pane (such as an Extras creature statblock, item, or spell) is open alongside the Game Log,
+   expand the sidebar to display the detail pane to the left of the Game Log (over the character sheet),
+   matching the native DDB / DM sheet layout. */
+.ct-sidebar[class*='styles_sidebar']:has([class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content)),
+.ct-sidebar[class*='styles_sidebar']:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']),
+.ct-sidebar:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) {
+    min-width: calc(2 * var(--sidebar-width, 340px)) !important;
+    max-width: calc(2 * var(--sidebar-width, 340px)) !important;
+}
+
+.ct-sidebar[class*='styles_sidebar']:has([class*='styles_content']>div:first-of-type>div:not([class*='styles_gameLogPane']):not(.sidebar-panel-content)) [class*='styles_content'],
+.ct-sidebar[class*='styles_sidebar']:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) [class*='styles_content'],
+.ct-sidebar:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) [class*='styles_content'] {
+    min-width: calc(2 * var(--sidebar-width, 340px)) !important;
+    max-width: calc(2 * var(--sidebar-width, 340px)) !important;
+}
+
+.ct-sidebar[class*='styles_sidebar'] [class*='styles_content']>div:first-of-type {
+    display: flex !important;
+}
+
+.ct-sidebar[class*='styles_sidebar'] [class*='styles_content']>div:first-of-type>div:not(.sidebar-panel-content) {
+    min-width: var(--sidebar-width, 340px) !important;
+    max-width: var(--sidebar-width, 340px) !important;
+}
+
+.ct-sidebar:has(.ct-creature-pane__block, .ddbc-creature-block, [class*='styles_creatureBlock']) .avtt-sidebar-controls {
+    margin-left: auto;
+    width: var(--sidebar-width, 340px);
+}
+
 .token:before{
     transform: rotate(calc(var(--token-rotation) + var(--token-heading)));
 }
