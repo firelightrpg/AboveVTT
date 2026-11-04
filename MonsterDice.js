@@ -389,14 +389,14 @@ function scan_player_creature_pane(target) {
 	const activeContainer = $(activeTarget);
 	activeContainer.find(".avtt-roll-button").on("contextmenu", rightClickHandler);
 
-	const abilitySelector = "p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em, p>strong:first-child, div>strong:first-child, p>em:first-child, div>em:first-child, p>b:first-child";
+	const abilitySelector = "p>em>strong, p>strong>em, div>strong>em, div>em>strong, p>span>em>strong, p>span>strong>em, p>strong:first-of-type, div>strong:first-of-type, p>b:first-of-type";
 
 	activeContainer.find(abilitySelector).off("contextmenu.sendToGamelog").on("contextmenu.sendToGamelog", function (e) {
     e.preventDefault();
     if(e.altKey || e.shiftKey || (!isMac() && e.ctrlKey) || e.metaKey)
       return;
 	let outerP = e.target.closest('p, div').outerHTML;
-	const regExFeature = new RegExp(`${e.target.outerHTML.replace(/([\(\)])/g,"\\$1")}[\s\S]+?(?=(<\/p>|<\/div>|<strong><em|<em><strong))`, 'gi');
+	const regExFeature = new RegExp(`${e.target.outerHTML.replace(/([\(\)])/g,"\\$1")}[\\s\\S]+?(?=(<\/p>|<\/div>|<strong><em|<em><strong))`, 'gi');
     let match = outerP.match(regExFeature);
 
 
@@ -428,7 +428,8 @@ function scan_player_creature_pane(target) {
       return;
     let rollButtons = typeof get_statblock_ability_roll_buttons === 'function' ? get_statblock_ability_roll_buttons(e.currentTarget) : [];
     if (!rollButtons.length) {
-      rollButtons = $(e.currentTarget).closest('em, strong, b').nextUntil(':has(.avtt-ability-roll-button)').filter('.avtt-roll-button:not([data-rolltype="recharge"])').toArray();
+      let rBtns = $(e.currentTarget).closest('em:has(strong), strong:has(em), em, strong, b').nextUntil(':has(.avtt-ability-roll-button)');
+      rollButtons = rBtns.add(rBtns.find('.avtt-roll-button:not([data-rolltype="recharge"]), .avtt-roll-formula-button')).closest('.avtt-roll-button:not([data-rolltype="recharge"]), .avtt-roll-formula-button').toArray();
     }
     
 
@@ -439,19 +440,21 @@ function scan_player_creature_pane(target) {
 
       if(data.expression != undefined){
         if (/^1d20[+-]([0-9]+)/g.test(data.expression)) {
+           const modMatch = data.expression.match(/[+-][0-9]+/);
+           const mod = modMatch ? modMatch[0] : '';
            if(e.altKey){
               if(e.shiftKey){
-                diceRoll = new DiceRoll(`3d20kh1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
+                diceRoll = new DiceRoll(`3d20kh1${mod}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
                }
                else if((!isMac() && e.ctrlKey) || e.metaKey){
-                diceRoll = new DiceRoll(`3d20kl1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
+                diceRoll = new DiceRoll(`3d20kl1${mod}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
                }
            }
            else if(e.shiftKey){
-            diceRoll = new DiceRoll(`2d20kh1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
+            diceRoll = new DiceRoll(`2d20kh1${mod}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
            }
            else if((!isMac() && e.ctrlKey) || e.metaKey){
-            diceRoll = new DiceRoll(`2d20kl1${data.modifier}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
+            diceRoll = new DiceRoll(`2d20kl1${mod}`, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
            }else{
             diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
            }
@@ -459,11 +462,10 @@ function scan_player_creature_pane(target) {
         else{
           diceRoll = new DiceRoll(data.expression, data.rollTitle, data.rollType, displayName, creatureAvatar, "monster");
         }
-      
 
-
-        window.diceRoller.roll(diceRoll, true, undefined, undefined, undefined, data.damageType);
-
+        const critRange = 20;
+        const critType = get_avtt_setting_value('monsterCritType');
+        window.diceRoller.roll(diceRoll, true, critRange, critType, undefined, data.damageType);
       }
     }
   })
@@ -475,7 +477,11 @@ function scan_player_creature_pane(target) {
       continue;
     }
     const btns = typeof get_statblock_ability_roll_buttons === 'function' ? get_statblock_ability_roll_buttons(abilities[i]) : [];
-    const hasRolls = btns.length > 0 || $(abilities[i]).closest('em, strong, b').nextUntil('em, strong, b').is('.avtt-roll-button, :has(.avtt-roll-button)');
+    let hasRolls = btns.length > 0;
+    if (!hasRolls) {
+      let rBtns = $(abilities[i]).closest('em:has(strong), strong:has(em), em, strong, b').nextUntil(':has(.avtt-ability-roll-button)');
+      hasRolls = rBtns.add(rBtns.find('.avtt-roll-button:not([data-rolltype="recharge"]), .avtt-roll-formula-button')).closest('.avtt-roll-button:not([data-rolltype="recharge"]), .avtt-roll-formula-button').length > 0;
+    }
     if(hasRolls){
       $(abilities[i]).toggleClass('avtt-ability-roll-button', true);
     }
