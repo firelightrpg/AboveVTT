@@ -65,17 +65,23 @@ const charactersPageRegex = /\/characters\/\d+/;
 
 const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication');
 
-window.isDiscordRelayLeader = false;
+window.isDiscordRelayLeader = true;
 const relayedDiscordRollKeys = new Set();
 
 function init_discord_relay_lock() {
+  const gameId = (typeof find_game_id === 'function' && find_game_id()) || 'global';
+  const lockName = 'abovevtt_discord_relay_' + gameId;
   if (navigator?.locks?.request) {
-    navigator.locks.request('abovevtt_discord_relay_leader', async (lock) => {
-      window.isDiscordRelayLeader = true;
-      // Keep lock open for lifetime of tab
-      await new Promise(() => {});
+    navigator.locks.request(lockName, { ifAvailable: true }, async (lock) => {
+      if (lock) {
+        window.isDiscordRelayLeader = true;
+        await new Promise(() => {});
+      } else {
+        // Another tab of this exact game already has the leader lock
+        window.isDiscordRelayLeader = false;
+      }
     }).catch(() => {
-      window.isDiscordRelayLeader = false;
+      window.isDiscordRelayLeader = true;
     });
   } else {
     window.isDiscordRelayLeader = true;
