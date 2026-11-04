@@ -506,8 +506,16 @@ function avtt_settings(campaignSettings = false) {
 			class: 'stream'
 	});
 	settings.push({
+			name: "customTurnSecret",
+			label: "TURN Shared Secret (Nextcloud Talk / RFC 5766)",
+			type: "text",
+			defaultValue: "",
+			global: 1,
+			class: 'stream'
+	});
+	settings.push({
 			name: "customTurnUser",
-			label: "TURN Username",
+			label: "TURN Static Username",
 			type: "text",
 			defaultValue: "",
 			global: 1,
@@ -515,7 +523,7 @@ function avtt_settings(campaignSettings = false) {
 	});
 	settings.push({
 			name: "customTurnPass",
-			label: "TURN Credential",
+			label: "TURN Static Credential",
 			type: "text",
 			defaultValue: "",
 			global: 1,
