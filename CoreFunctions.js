@@ -66,6 +66,7 @@ const charactersPageRegex = /\/characters\/\d+/;
 const tabCommunicationChannel = new BroadcastChannel('aboveVttTabCommunication');
 
 window.isDiscordRelayLeader = false;
+const relayedDiscordRollKeys = new Set();
 
 function init_discord_relay_lock() {
   if (navigator?.locks?.request) {
@@ -154,10 +155,25 @@ function relay_roll_to_discord(msg) {
   const action = data.action || 'Dice Roll';
 
   // Determine if roll is private / secret (Self roll or sent to DM)
-  const isPrivate = (msg.messageScope === 'userId' || 
+  // If messageScope is 'gameId' or sendTo is 'everyone', it is explicitly public (e.g. standard roll or revealed via Send To Everyone)
+  const isPrivate = (msg.messageScope === 'gameId' || context.messageScope === 'gameId' || data.sendTo === 'everyone') ? false :
+                    (msg.messageScope === 'userId' || 
                      context.messageScope === 'userId' || 
                      data.sendTo === 'self' || 
                      data.sendTo === 'dungeonmaster');
+
+  const rollId = data.rollId || msg.id;
+  const dedupeKey = rollId ? `${rollId}_${isPrivate ? 'priv' : 'pub'}` : null;
+  if (dedupeKey && relayedDiscordRollKeys.has(dedupeKey)) {
+    return;
+  }
+  if (dedupeKey) {
+    relayedDiscordRollKeys.add(dedupeKey);
+    if (relayedDiscordRollKeys.size > 200) {
+      const first = relayedDiscordRollKeys.values().next().value;
+      relayedDiscordRollKeys.delete(first);
+    }
+  }
 
   const rolls = data.rolls || [];
   if (!rolls.length) return;
@@ -194,12 +210,18 @@ function relay_roll_to_discord(msg) {
     avatar = null;
   }
 
-  const titlePrefix = isPrivate ? '🔒 [Secret DM Roll] ' : '';
+  let titlePrefix = '';
+  if (isPrivate) {
+    titlePrefix = '🔒 [Secret DM Roll] ';
+  } else if (msg.isRevealed) {
+    titlePrefix = '📢 [Revealed] ';
+  }
+
   const embed = {
     title: `${titlePrefix}${action}`,
     description: parts.join('\n'),
     color: color,
-    footer: { text: isPrivate ? 'AboveVTT DM Game Log' : 'AboveVTT Game Log' }
+    footer: { text: isPrivate ? 'AboveVTT DM Game Log' : (msg.isRevealed ? 'AboveVTT Revealed Roll' : 'AboveVTT Game Log') }
   };
 
   if (actor) {
