@@ -1231,6 +1231,9 @@ function set_avtt_setting_value(name, newValue) {
 			toggle_peer_settings_visibility(newValue);
 			local_peer_setting_changed(name, newValue);
 			break;
+		case "customPeerEnabled":
+			toggle_custom_webrtc_settings_visibility(newValue);
+			break;
 		case "projector":
 			$('#projector_toggle, #projector_zoom_lock').toggleClass('enabled', newValue);
 			break;
@@ -1536,7 +1539,25 @@ function init_settings() {
 
 
 	toggle_peer_settings_visibility(get_avtt_setting_value("peerStreaming"));
+	toggle_custom_webrtc_settings_visibility(get_avtt_setting_value("customPeerEnabled"));
 	redraw_settings_panel_token_examples();
+}
+
+function toggle_custom_webrtc_settings_visibility(enabled) {
+	const selectors = `
+		.token-image-modal-footer-select-wrapper[data-option-name="customPeerHost"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customPeerPort"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customPeerPath"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customTurnServer"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customTurnSecret"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customTurnUser"],
+		.token-image-modal-footer-select-wrapper[data-option-name="customTurnPass"]
+	`;
+	if (enabled) {
+		$(selectors).show();
+	} else {
+		$(selectors).hide();
+	}
 }
 
 function redraw_settings_panel_token_examples(settings) {
