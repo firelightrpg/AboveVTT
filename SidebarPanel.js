@@ -489,6 +489,16 @@ function build_flyout_input(settingOption, currentValue, changeHandler){
             if (!currentValue || typeof currentValue !== 'object') {
                 currentValue = {};
             }
+            if (settingOption.options && Array.isArray(settingOption.options)) {
+                for (let opt of settingOption.options) {
+                    if (currentValue[opt.name] === undefined) {
+                        const legacyVal = get_avtt_setting_value(opt.name);
+                        if (legacyVal !== undefined) {
+                            currentValue[opt.name] = legacyVal;
+                        }
+                    }
+                }
+            }
 
             let optionsContainer = build_sidebar_token_options_flyout(settingOption.options, currentValue, function(name, value) {
                 currentValue[name] = value;

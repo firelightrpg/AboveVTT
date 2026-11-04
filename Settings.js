@@ -478,64 +478,59 @@ function avtt_settings(campaignSettings = false) {
 			class: 'stream'
 	});
 	settings.push({
-			name: "discordWebhookUrl",
-			label: "Player Log Webhook URL (#player-log)",
-			type: "text",
-			defaultValue: "",
-			description: "Discord webhook for the public player channel (e.g. #player-log). Receives public rolls and public chat. Never receives secret DM rolls or whispers.",
-			dmOnly: true,
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "discordDmWebhookUrl",
-			label: "DM Log Webhook URL (#dm-log)",
-			type: "text",
-			defaultValue: "",
-			description: "Discord webhook for your private DM channel (e.g. #dm-log). Receives secret rolls ('To Self' / 'To DM') and private whispers.",
-			dmOnly: true,
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "discordRelayRolls",
-			label: "Relay Rolls to Discord",
-			type: "toggle",
+			name: "discordConfig",
+			label: "Discord Integration",
+			type: "flyoutButton",
+			description: "Relay dice rolls, character actions, and chat to Discord channels via webhooks (#player-log and #dm-log).",
 			options: [
-				{ value: true, label: "Enabled", description: "Relay dice rolls, attacks, and checks to Discord." },
-				{ value: false, label: "Disabled", description: "Do not relay dice rolls to Discord." }
+				{
+					name: "discordWebhookUrl",
+					label: "Player Log Webhook URL (#player-log)",
+					type: "text",
+					defaultValue: "",
+					description: "Discord webhook for the public player channel (e.g. #player-log). Receives public rolls and public chat. Never receives secret DM rolls or whispers."
+				},
+				{
+					name: "discordDmWebhookUrl",
+					label: "DM Log Webhook URL (#dm-log)",
+					type: "text",
+					defaultValue: "",
+					description: "Discord webhook for your private DM channel (e.g. #dm-log). Receives secret rolls ('To Self' / 'To DM') and private whispers."
+				},
+				{
+					name: "discordRelayRolls",
+					label: "Relay Rolls to Discord",
+					type: "toggle",
+					options: [
+						{ value: true, label: "Enabled", description: "Relay dice rolls, attacks, and checks to Discord." },
+						{ value: false, label: "Disabled", description: "Do not relay dice rolls to Discord." }
+					],
+					defaultValue: true
+				},
+				{
+					name: "discordRelayChat",
+					label: "Relay Chat to Discord",
+					type: "toggle",
+					options: [
+						{ value: true, label: "Enabled", description: "Relay in-character chatter and AboveVTT messages to Discord." },
+						{ value: false, label: "Disabled", description: "Do not relay chat messages to Discord." }
+					],
+					defaultValue: true
+				},
+				{
+					name: "discordDmMirrorPublic",
+					label: "Mirror Player Log to DM Channel",
+					type: "toggle",
+					options: [
+						{ value: true, label: "Enabled", description: "Also mirror public player rolls and chat to #dm-log for a complete master archive." },
+						{ value: false, label: "Disabled", description: "Send only private rolls and whispers to #dm-log." }
+					],
+					defaultValue: true
+				}
 			],
-			defaultValue: true,
+			defaultValue: {},
 			dmOnly: true,
 			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "discordRelayChat",
-			label: "Relay Chat to Discord",
-			type: "toggle",
-			options: [
-				{ value: true, label: "Enabled", description: "Relay in-character chatter and AboveVTT messages to Discord." },
-				{ value: false, label: "Disabled", description: "Do not relay chat messages to Discord." }
-			],
-			defaultValue: true,
-			dmOnly: true,
-			global: 1,
-			class: 'stream'
-	});
-	settings.push({
-			name: "discordDmMirrorPublic",
-			label: "Mirror Player Log to DM Channel",
-			type: "toggle",
-			options: [
-				{ value: true, label: "Enabled", description: "Also mirror public player rolls and chat to #dm-log for a complete master archive." },
-				{ value: false, label: "Disabled", description: "Send only private rolls and whispers to #dm-log." }
-			],
-			defaultValue: true,
-			dmOnly: true,
-			global: 1,
-			class: 'stream'
-	});
 			class: 'stream'
 	});
 	if(!campaignSettings){
@@ -1136,7 +1131,14 @@ function get_custom_scene_settings(){
 }
 
 function get_avtt_setting_default_value(name) {
-	return avtt_settings().find(s => s.name === name)?.defaultValue;
+	for (const s of avtt_settings()) {
+		if (s.name === name) return s.defaultValue;
+		if (s.options && Array.isArray(s.options)) {
+			const nested = s.options.find(opt => opt.name === name);
+			if (nested) return nested.defaultValue;
+		}
+	}
+	return undefined;
 }
 function get_avtt_setting_value(name) {
 	if (name === "aggressiveErrorMessages" && is_release_build()) {
@@ -1147,6 +1149,20 @@ function get_avtt_setting_value(name) {
 		case "iframeStatBlocks": return should_use_iframes_for_monsters();
 		case "campaignDefaults":
 			setValue = $.extend({}, window.EXPERIMENTAL_SETTINGS[name], window.AVTT_CAMPAIGN_INFO.campaignSettings);
+			if (setValue !== undefined) {
+				return setValue;
+			}
+			return get_avtt_setting_default_value(name);
+		case "discordWebhookUrl":
+		case "discordDmWebhookUrl":
+		case "discordRelayRolls":
+		case "discordRelayChat":
+		case "discordDmMirrorPublic":
+			const discCfg = window.EXPERIMENTAL_SETTINGS.discordConfig;
+			if (discCfg && typeof discCfg === "object" && discCfg[name] !== undefined) {
+				return discCfg[name];
+			}
+			setValue = window.EXPERIMENTAL_SETTINGS[name];
 			if (setValue !== undefined) {
 				return setValue;
 			}
