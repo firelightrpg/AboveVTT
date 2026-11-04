@@ -479,13 +479,13 @@ function avtt_settings(campaignSettings = false) {
 			type: "flyoutButton",
 			description: "Configure custom PeerJS signaling host/port/path and Coturn TURN/STUN server credentials.",
 			options: [
-				{ name: "customPeerHost", label: "PeerJS Host", type: "text", defaultValue: "" },
+				{ name: "customPeerHost", label: "PeerJS Host", type: "text", defaultValue: "", description: "Custom signaling host (leave empty for default 0.peerjs.com)." },
 				{ name: "customPeerPort", label: "PeerJS Port", type: "text", defaultValue: "443" },
 				{ name: "customPeerPath", label: "PeerJS Path", type: "text", defaultValue: "/" },
-				{ name: "customTurnServer", label: "Custom TURN/STUN Server URL", type: "text", defaultValue: "" },
-				{ name: "customTurnSecret", label: "TURN Shared Secret (Nextcloud Talk / RFC 5766)", type: "text", defaultValue: "" },
-				{ name: "customTurnUser", label: "TURN Static Username", type: "text", defaultValue: "" },
-				{ name: "customTurnPass", label: "TURN Static Credential", type: "text", defaultValue: "" }
+				{ name: "customTurnServer", label: "Custom TURN/STUN Server URL", type: "text", defaultValue: "", description: "e.g. turn:wyrmbox.com:3478 or stun:wyrmbox.com:3478" },
+				{ name: "customTurnSecret", label: "TURN Shared Secret", type: "text", defaultValue: "", description: "Shared secret for dynamic credentials (used by Nextcloud Talk and RFC 5766 REST API servers)." },
+				{ name: "customTurnUser", label: "TURN Username", type: "text", defaultValue: "", description: "Static username (leave empty if using a shared secret)." },
+				{ name: "customTurnPass", label: "TURN Credential", type: "text", defaultValue: "", description: "Static password (leave empty if using a shared secret)." }
 			],
 			defaultValue: {},
 			global: 1,
