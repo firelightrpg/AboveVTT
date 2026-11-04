@@ -138,6 +138,13 @@ function relay_chat_to_discord(msg) {
       body: JSON.stringify(payload)
     }).catch(err => console.debug('[Discord Relay] Error posting chat:', err));
   }
+
+  // Also forward to local Sendai DM session ledger if running
+  fetch('http://127.0.0.1:26796/api/session/discord-webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
 }
 
 function relay_roll_to_discord(msg) {
@@ -262,6 +269,13 @@ function relay_roll_to_discord(msg) {
       body: JSON.stringify(payload)
     }).catch(err => console.debug('[Discord Relay] Error posting roll:', err));
   }
+
+  // Also forward to local Sendai DM session ledger if running
+  fetch('http://127.0.0.1:26796/api/session/discord-webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
 }
 
 function isIOS() {
